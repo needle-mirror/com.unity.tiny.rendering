@@ -3,6 +3,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Tiny.Rendering;
 using Unity.Transforms;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.TinyConversion
 {
@@ -42,9 +43,15 @@ namespace Unity.TinyConversion
                 camera.clipZNear = uCamera.nearClipPlane;
                 camera.clipZFar = uCamera.farClipPlane;
                 camera.aspect = (float)1920 / (float)1080; //fixed for now
-
                 DstEntityManager.AddComponentData(entity, camera);
-                DstEntityManager.AddComponent<Frustum>(entity);
+
+                // For CameraSettings2D
+                float3 customSortAxisSetting = new float3(0,0,1.0f);
+                if (UnityEngine.Rendering.GraphicsSettings.transparencySortMode == UnityEngine.TransparencySortMode.CustomAxis)
+                    customSortAxisSetting = UnityEngine.Rendering.GraphicsSettings.transparencySortAxis;
+                DstEntityManager.AddComponentData(entity, new Unity.Tiny.Rendering.CameraSettings2D
+                    { customSortAxis = customSortAxisSetting });
+                
             });
         }
     }

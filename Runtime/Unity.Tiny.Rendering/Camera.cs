@@ -47,11 +47,24 @@ namespace Unity.Tiny.Rendering
         public float fov;   // in degrees for perspective, direct scale factor in orthographic 
         public float aspect;
         public ProjectionMode mode;
-        public float depth; 
+        public float depth;
+    }
+    
+    // Camera Settings 2D
+    public struct CameraSettings2D : IComponentData
+    {
+        public float3 customSortAxis;    // For Custom Axis Sort.
+    }
+
+    // tag camera to auto set z range 
+    public struct CameraAutoZFarFromWorldBounds : IComponentData // next to camera
+    {
+        public float clipZFarMax;   // max far range
+        public float clipZFarMin;   // minimum far range
     }
 
     // tag camera to auto update aspect to primary display 
-    public struct CameraAutoAspectFromDisplay : IComponentData
+    public struct CameraAutoAspectFromDisplay : IComponentData // next to camera
     {
     }
 
@@ -59,9 +72,10 @@ namespace Unity.Tiny.Rendering
     {
         public float4x4 projection;
         public float4x4 view;
+        public Frustum frustum;
     }
 
-    public struct Frustum : IComponentData
+    public struct Frustum
     {
         private float4 p0;
         private float4 p1;
@@ -151,6 +165,22 @@ namespace Unity.Tiny.Rendering
             );
         }
 
+        public static float4x4 ProjectionMatrixUnitOrthoOffset(float2 offset, float invsize)
+        {
+            return new float4x4(
+                invsize, 0,       0,    offset.x,
+                0,       invsize, 0,    offset.y,
+                0,       0,       2.0f, -1.0f,
+                0,       0,       0,    1
+            );
+        }
+
+        public static float4 InitPlane(float3 pos, float3 normal)
+        {
+            Assert.IsTrue(0.99f < math.lengthsq(normal) && math.lengthsq(normal) < 1.01f);
+            return new float4(normal.x, normal.y, normal.z, math.dot(pos, normal));
+        }
+
         public static float4 NormalizePlane(float4 p)
         {
             float l = math.length(p.xyz);
@@ -158,10 +188,11 @@ namespace Unity.Tiny.Rendering
         }
 
         // compute world space frustum
-        public static void FrustumFromMatrices(float4x4 projection, float4x4 view, ref Frustum dest)
+        public static void FrustumFromMatrices(float4x4 projection, float4x4 view, out Frustum dest)
         {
             // assumes opengl style projection (TODO, check with orthographic!)
             float4x4 vp = math.transpose(math.mul(projection, view));
+            dest = default;
             dest.PlanesCount = 6;
             dest.SetPlane(0, NormalizePlane(vp.c3 + vp.c0));
             dest.SetPlane(1, NormalizePlane(vp.c3 - vp.c0));
@@ -171,12 +202,100 @@ namespace Unity.Tiny.Rendering
             dest.SetPlane(5, NormalizePlane(vp.c3 - vp.c2));
         }
 
-        public static void FrustumFromCube(float3 pos, float size, ref Frustum dest)
-        {
-            // TODO
+        public static void FrustumFromAABB(AABB b, out Frustum dest) {
+            dest = default;
             dest.PlanesCount = 6;
+            float3 bMin = b.Min;
+            float3 bMax = b.Max;
+            for (int i = 0; i < 6; i++) {
+                float3 n = new float3(0.0f);
+                float3 p; 
+                if ( (i&1) == 0 ) {
+                    n[i >> 1] = 1.0f;
+                    p = bMax;
+                } else {
+                    n[i >> 1] = -1.0f;
+                    p = bMin;
+                }
+                dest.SetPlane(i, InitPlane(p,n));
+            }
+        }
+
+        public static void FrustumFromCube(float3 pos, float size, out Frustum dest)
+        {
+            dest = default;
+            dest.PlanesCount = 6;
+            for (int i = 0; i < 6; i++) {
+                float3 pp = pos;
+                float s = (i & 1) == 0 ? 1.0f : -1.0f;
+                pp[i >> 1] += size * s;
+                float3 n = new float3(0.0f);
+                n[i >> 1] = s;
+                dest.SetPlane(i, InitPlane(pp,n));
+            }
+        }
+
+        static public float3 FrustumVertexPerspective(int idx, float w, float h, float near, float far)
+        {
+            float3 r = new float3(w, h, 1.0f);
+            if (idx < 4) { r *= near; } else { r *= far; }
+            switch (idx & 3)
+            {
+                case 0: break;
+                case 1: r.x = -r.x; break;
+                case 3: r.x = -r.x; r.y = -r.y; break;
+                case 2: r.y = -r.y; break;
+            }
+            return r;
+        }
+
+        static public float3 FrustumVertexOrtho(int idx, float size, float near, float far)
+        {
+            float3 r = new float3(size,size,0.0f);
+            if (idx < 4) { r.z = near; } else { r.z = far; }
+            switch (idx & 3)
+            {
+                case 0: break;
+                case 1: r.x = -r.x; break;
+                case 3: r.x = -r.x; r.y = -r.y; break;
+                case 2: r.y = -r.y; break;
+            }
+            return r;
         }
     }
+
+    [UpdateInGroup(typeof(PresentationSystemGroup))]
+    [UpdateBefore(typeof(UpdateCameraMatricesSystem))]
+    [UpdateAfter(typeof(UpdateWorldBoundsSystem))]
+    public class UpdateCameraZFarSystem : ComponentSystem
+    {
+        private AABB TransformBounds (ref float4x4 tx, ref AABB b)
+        {
+            WorldBounds wBounds;
+            Culling.AxisAlignedToWorldBounds(ref tx, ref b, out wBounds);
+            // now turn those bounds back to axis aligned.. 
+            AABB aab;
+            Culling.WorldBoundsToAxisAligned(ref wBounds, out aab);
+            return aab;
+        }
+
+        protected override void OnUpdate()
+        {
+            Entities.ForEach((Entity e, ref CameraAutoZFarFromWorldBounds ab, ref Camera cam, ref LocalToWorld tx) => {
+                var wsBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>().m_wholeWorldBounds;
+                WorldBounds csBounds;
+                float4x4 camTx = math.inverse(tx.Value);
+                Culling.AxisAlignedToWorldBounds(ref camTx, ref wsBounds, out csBounds);
+                float3 bbMin = csBounds.c000;
+                float3 bbMax = bbMin;
+                Culling.GrowBounds(ref bbMin, ref bbMax, in csBounds);
+                if ( bbMax.z < ab.clipZFarMin ) bbMax.z = ab.clipZFarMin;
+                if ( bbMax.z > ab.clipZFarMax ) bbMax.z = ab.clipZFarMax;
+                cam.clipZFar = bbMax.z;
+            });
+        }        
+    }
+    
 
     [UnityEngine.ExecuteAlways]
     [UpdateInGroup(typeof(PresentationSystemGroup))]
@@ -190,9 +309,20 @@ namespace Unity.Tiny.Rendering
                 return ProjectionHelper.ProjectionMatrixPerspective(camera.clipZNear, camera.clipZFar, camera.fov, camera.aspect);
         }
 
-        static void FrustumFromCamera(ref CameraMatrices cm, ref Frustum dest)
+        // bounds returned here are not a box for perspective cameras, but the vertices of the frustum 
+        public static WorldBounds BoundsFromCamera(in Camera camera)
         {
-            ProjectionHelper.FrustumFromMatrices(cm.projection, cm.view, ref dest);
+            WorldBounds r = default;
+            if (camera.mode == ProjectionMode.Orthographic) {
+                for (int i = 0; i < 8; i++)
+                    r.SetVertex(i, ProjectionHelper.FrustumVertexOrtho(i, camera.fov, camera.clipZNear, camera.clipZFar));
+            } else { 
+                float h = math.tan(math.radians(camera.fov) * .5f);
+                float w = h * camera.aspect;
+                for (int i = 0; i < 8; i++)
+                    r.SetVertex(i, ProjectionHelper.FrustumVertexPerspective(i, w, h, camera.clipZNear, camera.clipZFar));
+            }
+            return r;
         }
 
         protected override void OnUpdate() 
@@ -214,16 +344,11 @@ namespace Unity.Tiny.Rendering
             ecb.Dispose();
 
             // update 
-            Entities.ForEach((ref Camera c, ref LocalToWorld tx, ref CameraMatrices cm, ref Frustum f) =>
-            { // with frustum
+            Entities.ForEach((ref Camera c, ref LocalToWorld tx, ref CameraMatrices cm) =>
+            {
                 cm.projection = ProjectionMatrixFromCamera(ref c);
                 cm.view = math.inverse(tx.Value);
-                FrustumFromCamera(ref cm, ref f);
-            });
-            Entities.WithNone<Frustum>().ForEach((ref Camera c, ref LocalToWorld tx, ref CameraMatrices cm) =>
-            { // no frustum
-                cm.projection = ProjectionMatrixFromCamera(ref c);
-                cm.view = math.inverse(tx.Value);
+                ProjectionHelper.FrustumFromMatrices(cm.projection, cm.view, out cm.frustum);
             });
         }
     }

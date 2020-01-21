@@ -12,14 +12,15 @@
         "Unity.Mathematics.Extensions",
         "Unity.Tiny.Authoring",
         "Unity.Build",
-        "Unity.Platforms"
+        "Unity.Platforms",
+        "Unity.Entities.Runtime.Build"
     ],
-    "includePlatforms": [ "Editor" ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": false,
-    "defineConstraints": [],
+    "defineConstraints": ["UNITY_EDITOR"],
     "versionDefines": []
 }

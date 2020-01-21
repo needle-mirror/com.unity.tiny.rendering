@@ -9,7 +9,6 @@
       "Unity.Tiny.Core",
       "Unity.Tiny.Image2D",
       "Unity.Tiny.Rendering",
-      "Unity.Tiny.Scenes",
       "Unity.Tiny.Rendering.Native",
       "Unity.Tiny.Input"
     ],

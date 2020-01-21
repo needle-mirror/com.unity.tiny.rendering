@@ -76,6 +76,16 @@ namespace Unity.Tiny.Rendering
 
     public static class Culling
     {
+        public static readonly int[] EdgeTable = { 0b_000_001, 0b_000_100, 0b001_101, 0b101_100, // top
+                                            0b_010_011, 0b_010_110, 0b011_111, 0b111_110, // bottom
+                                            0b_000_010, 0b_001_011, 0b_101_111, 0b_100_110 // sides 
+                                          };
+
+        public static float3 SelectCoordsMinMax(float3 cMin, float3 cMax, int mask)
+        {
+            return new float3((mask & 1) == 1 ? cMax.x : cMin.x, (mask & 2) == 2 ? cMax.y : cMin.y, (mask & 4) == 4 ? cMax.z : cMin.z);
+        }
+
         static bool IsCulled8(float3 p0, float3 p1, float3 p2, float3 p3, float3 p4, float3 p5, float3 p6, float3 p7, float4 plane)
         {
             float4 acc0; 
@@ -218,12 +228,19 @@ namespace Unity.Tiny.Rendering
             aab.Extents = (bbMax - bbMin) * .5f;
         }
 
+        static public void TransformWorldBounds(in float4x4 tx, ref WorldBounds b)
+        {
+            for (int i = 0; i < 8; i++)
+                b.SetVertex(i, math.transform(tx, b.GetVertex(i)));
+        }
+
         static public void AxisAlignedToWorldBounds(ref float4x4 tx, ref AABB aaBounds, out WorldBounds wBounds)
         {
+            float3 s = aaBounds.Size;
             float3 o = math.mul(tx, new float4(aaBounds.Min, 1)).xyz;
-            float3 dx = math.mul(tx, new float4(aaBounds.Size.x, 0, 0, 0)).xyz;
-            float3 dy = math.mul(tx, new float4(0, aaBounds.Size.y, 0, 0)).xyz;
-            float3 dz = math.mul(tx, new float4(0, 0, aaBounds.Size.z, 0)).xyz;
+            float3 dx = math.mul(tx, new float4(s.x, 0, 0, 0)).xyz;
+            float3 dy = math.mul(tx, new float4(0, s.y, 0, 0)).xyz;
+            float3 dz = math.mul(tx, new float4(0, 0, s.z, 0)).xyz;
             wBounds.c000 = o;
             wBounds.c001 = o + dx;
             wBounds.c011 = o + dx + dy;
@@ -316,9 +333,10 @@ namespace Unity.Tiny.Rendering
 
     [UnityEngine.ExecuteAlways]
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    [UpdateAfter(typeof(UpdateCameraMatricesSystem))]
     public class UpdateWorldBoundsSystem : ComponentSystem
     {
+        public AABB m_wholeWorldBounds;
+
         protected override void OnUpdate()
         {
             // add WorldBounds to ObjectBounds if not present
@@ -374,24 +392,25 @@ namespace Unity.Tiny.Rendering
             ecb.Dispose();
 
             // update bounds -- aa box
-            Entities.ForEach((Entity e, ref ObjectBounds ob, ref LocalToWorld tx, ref WorldBounds b) =>
+            // TODO: this needs to change track
+            float3 bbMinWhole = new float3(float.MaxValue); 
+            float3 bbMaxWhole = new float3(-float.MaxValue);
+            Entities.ForEach((Entity e, ref ObjectBounds ob, ref LocalToWorld tx, ref WorldBounds wb) =>
             {
-                Culling.AxisAlignedToWorldBounds(ref tx.Value, ref ob.bounds, out b);
+                Culling.AxisAlignedToWorldBounds(ref tx.Value, ref ob.bounds, out wb);
+                Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
             });
+            m_wholeWorldBounds.Center = (bbMaxWhole + bbMinWhole) * .5f;
+            m_wholeWorldBounds.Extents = (bbMaxWhole - bbMinWhole) * .5f;
 
             // update bounds -- spheres
-            Entities.WithAny<Scale,NonUniformScale>().ForEach((Entity e, ref ObjectBoundingSphere ob, ref LocalToWorld tx, ref WorldBoundingSphere b) =>
-            {
+            Entities.ForEach((Entity e, ref ObjectBoundingSphere ob, ref LocalToWorld tx, ref WorldBoundingSphere b) =>
+            { // with scale
                 b.position = math.transform(tx.Value, ob.position);
                 // only if there is scale 
                 float3 scale = new float3(math.lengthsq(tx.Value.c0), math.lengthsq(tx.Value.c1), math.lengthsq(tx.Value.c2));
                 float s = math.sqrt(math.cmax(scale));
                 b.radius = s * ob.radius;
-            });
-            Entities.WithNone<Scale,NonUniformScale>().ForEach((Entity e, ref ObjectBoundingSphere ob, ref LocalToWorld tx, ref WorldBoundingSphere b) =>
-            {
-                b.position = math.transform(tx.Value, ob.position);
-                b.radius = ob.radius;
             });
 
             // experimental: chunk bounds, if we keep this it should be done in one loop, updating bounds and chunk bounds at the same time

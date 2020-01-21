@@ -3,6 +3,7 @@ using Unity.Tiny;
 using Unity.Tiny.Rendering;
 using Unity.Mathematics;
 using UnityEngine;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.TinyConversion
 {
@@ -64,8 +65,7 @@ namespace Unity.TinyConversion
             Vector2 textTrans = uMaterial.GetTextureOffset("_BaseMap");
             DstEntityManager.AddComponentData<SimpleMaterial>(entity, new SimpleMaterial()
             {
-                texAlbedo = GetTextureEntity(uMaterial, "_MainTex"),
-                texOpacity = Entity.Null,
+                texAlbedoOpacity = GetTextureEntity(uMaterial, "_MainTex"),
                 constAlbedo = new float3(uMaterial.GetColor("_BaseColor").r, uMaterial.GetColor("_BaseColor").g, uMaterial.GetColor("_BaseColor").b),
                 constOpacity = uMaterial.GetColor("_BaseColor").a,
                 blend = GetBlending(uMaterial.GetFloat("_Blend")),
@@ -100,11 +100,10 @@ namespace Unity.TinyConversion
 
             DstEntityManager.AddComponentData<LitMaterial>(entity, new LitMaterial()
             {
-                texAlbedo = texAlbedo,
+                texAlbedoOpacity = texAlbedo,
                 constAlbedo = new float3(uMaterial.GetColor("_BaseColor").r, uMaterial.GetColor("_BaseColor").g, uMaterial.GetColor("_BaseColor").b),
                 constOpacity = uMaterial.GetColor("_BaseColor").a,
                 constEmissive = emissionColor,
-                texOpacity = GetTextureEntity(uMaterial, "_BaseMap"),
                 texMetal = texMetal,
                 texSmoothness = uMaterial.GetFloat("_Smoothness") > 0.0f ? texAlbedo : texMetal,
                 texNormal = GetTextureEntity(uMaterial, "_BumpMap"),
@@ -116,6 +115,14 @@ namespace Unity.TinyConversion
                 scale = new float2(textScale[0], textScale[1]),
                 offset = new float2( textTrans[0], 1 - textTrans[1]) // Invert the offset as well
             });
+        }
+
+        public override bool ShouldRunConversionSystem()
+        {
+            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
+            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+                return false;
+            return base.ShouldRunConversionSystem();
         }
 
         protected override void OnUpdate()

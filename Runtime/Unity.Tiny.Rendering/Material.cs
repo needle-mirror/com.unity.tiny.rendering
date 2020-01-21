@@ -6,8 +6,7 @@ namespace Unity.Tiny.Rendering
 {
     public struct SimpleMaterial : IComponentData, IEquatable<SimpleMaterial>
     {
-        public Entity texAlbedo;
-        public Entity texOpacity;
+        public Entity texAlbedoOpacity;
 
         public float3 constAlbedo;
         public float constOpacity;
@@ -21,8 +20,7 @@ namespace Unity.Tiny.Rendering
 
         public bool Equals(SimpleMaterial other)
         {
-            return texAlbedo.Equals(other.texAlbedo) &&
-                   texOpacity.Equals(other.texOpacity) &&
+            return texAlbedoOpacity.Equals(other.texAlbedoOpacity) &&
                    constAlbedo.Equals(other.constAlbedo) &&
                    constOpacity.Equals(other.constOpacity) &&
                    (twoSided == other.twoSided) &&
@@ -35,10 +33,9 @@ namespace Unity.Tiny.Rendering
 
     public struct LitMaterial : IComponentData, IEquatable<LitMaterial>
     {
-        public Entity texAlbedo;
+        public Entity texAlbedoOpacity;
         public Entity texMetal;
         public Entity texNormal;
-        public Entity texOpacity;
         public Entity texEmissive;
         public Entity texSmoothness;
 
@@ -58,12 +55,11 @@ namespace Unity.Tiny.Rendering
 
         public bool Equals(LitMaterial other)
         {
-            return texAlbedo.Equals(other.texAlbedo) &&
+            return texAlbedoOpacity.Equals(other.texAlbedoOpacity) &&
                    texMetal.Equals(other.texMetal) &&
                    texNormal.Equals(other.texNormal) &&
                    texEmissive.Equals(other.texEmissive) &&
                    texSmoothness.Equals(other.texSmoothness) &&
-                   texOpacity.Equals(other.texOpacity) &&
                    constAlbedo.Equals(other.constAlbedo) &&
                    constEmissive.Equals(other.constEmissive) &&
                    constOpacity.Equals(other.constOpacity) &&

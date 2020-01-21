@@ -40,7 +40,7 @@ namespace Unity.Tiny.Rendering
 
     public struct MainViewNodeTag : IComponentData
     {
-        // tag main vie node for auto building
+        // tag main view node for auto building
     }
 
     // SpriteRenderer is a bit different, as it needs to batch and strict sort
@@ -95,16 +95,34 @@ namespace Unity.Tiny.Rendering
                 scissor = new RenderPassRect(),
                 viewport = new RenderPassRect { x = 0, y = 0, w = (ushort)w, h = (ushort)h },
                 clearFlags = RenderPassClear.Color,
-                clearRGBA = RendererBGFXSystem.PackColorBGFX(new Color(0, 0, 0, 0)),
+                clearRGBA = 0,
                 clearDepth = 1.0f,
                 clearStencil = 0
             });
             EntityManager.AddComponent<RenderPassAutoSizeToNode>(ePassBlit);
-            EntityManager.AddComponent<Frustum>(ePassBlit);
+
+            Entity ePassDebug = EntityManager.CreateEntity();
+            EntityManager.AddComponentData(ePassDebug, new RenderPass
+            {
+                inNode = eNode,
+                sorting = RenderPassSort.Sorted,
+                projectionTransform = float4x4.identity,
+                viewTransform = float4x4.identity,
+                passType = RenderPassType.DebugOverlay,
+                viewId = 0xffff,
+                scissor = new RenderPassRect(),
+                viewport = new RenderPassRect { x = 0, y = 0, w = (ushort)w, h = (ushort)h },
+                clearFlags = 0,
+                clearRGBA = 0,
+                clearDepth = 1.0f,
+                clearStencil = 0
+            });
+            EntityManager.AddComponent<RenderPassAutoSizeToNode>(ePassDebug);
 
             DynamicBuffer<RenderNodeRef> nodeRefs = EntityManager.AddBuffer<RenderNodeRef>(eNode);
             DynamicBuffer<RenderPassRef> passRefs = EntityManager.AddBuffer<RenderPassRef>(eNode);
             passRefs.Add(new RenderPassRef { e = ePassBlit });
+            passRefs.Add(new RenderPassRef { e = ePassDebug });
 
             return eNode;
         }
@@ -112,7 +130,6 @@ namespace Unity.Tiny.Rendering
         private void SetPassComponents(Entity ePass, CameraMask cameraMask, Entity eCam)
         {
             EntityManager.AddComponent<RenderPassAutoSizeToNode>(ePass);
-            EntityManager.AddComponent<Frustum>(ePass);
             EntityManager.AddComponentData<CameraMask>(ePass, cameraMask);
             EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCamera
             {
@@ -208,14 +225,14 @@ namespace Unity.Tiny.Rendering
             passRefs.Add(new RenderPassRef { e = ePassUI });
         }
 
-        public void AddRenderToShadowMapForNode(Entity eNode, int w, int h)
+        public void AddRenderToShadowMapForNode(Entity eNode, int size)
         {
             Entity eTexDepth = EntityManager.CreateEntity();
             EntityManager.AddComponentData(eTexDepth, new Image2DRenderToTexture { format = RenderToTextureFormat.ShadowMap });
             EntityManager.AddComponentData(eTexDepth, new Image2D
             {
-                imagePixelWidth = w,
-                imagePixelHeight = h, 
+                imagePixelWidth = size,
+                imagePixelHeight = size, 
                 status = ImageStatus.Loaded,
                 flags = TextureFlags.UVClamp | TextureFlags.Nearest
             });
@@ -228,17 +245,24 @@ namespace Unity.Tiny.Rendering
             EntityManager.AddComponentData(eTexColor, new Image2DRenderToTexture { format = RenderToTextureFormat.RGBA });
             EntityManager.AddComponentData(eTexColor, new Image2D
             {
-                imagePixelWidth = w,
-                imagePixelHeight = h, 
+                imagePixelWidth = size,
+                imagePixelHeight = size, 
                 status = ImageStatus.Loaded,
                 flags = TextureFlags.UVClamp | TextureFlags.Nearest
             });
+#if false // enable to debug shadow maps 
+            EntityManager.AddComponentData(eTexColor, new GizmoDebugOverlayTexture {
+                color = new float4(1),
+                pos = new float2(-.7f,-.7f),
+                size = new float2(.25f, .25f)
+            });
+#endif
 #endif
             EntityManager.AddComponentData(eNode, new RenderNodeTexture
             {
                 colorTexture = eTexColor,
                 depthTexture = eTexDepth,
-                rect = new RenderPassRect { x = 0, y = 0, w = (ushort)w, h = (ushort)h }
+                rect = new RenderPassRect { x = 0, y = 0, w = (ushort)size, h = (ushort)size }
             });
         }
 
@@ -333,37 +357,45 @@ namespace Unity.Tiny.Rendering
             return e;
         }
 
-        protected Entity BuildDefaultRenderGraph(int w, int h)
+        protected Entity BuildDefaultRenderGraph(int w, int h, bool directToFrontBuffer)
         {
-            var eMainViewNode = CreateNodeEntity();
-            World.TinyEnvironment().SetEntityName(eMainViewNode, "Auto generated: Main view node");
-            EntityManager.AddComponent<MainViewNodeTag>(eMainViewNode);
+            Entity eMainViewNode;
+            if (!directToFrontBuffer) {
+                eMainViewNode = CreateNodeEntity();
+                World.TinyEnvironment().SetEntityName(eMainViewNode, "Auto generated: Main view node");
+                EntityManager.AddComponent<MainViewNodeTag>(eMainViewNode);
+                // add a target texture for main view 
+                AddRenderToTextureForNode(eMainViewNode, w, h, true, true);
+                // blit the main view node 
+                var eFrontBufferNode = CreateFrontBufferRenderNode(w, h, true);
+                World.TinyEnvironment().SetEntityName(eFrontBufferNode, "Auto generated: Front buffer node");
+                LinkNodes(eFrontBufferNode, eMainViewNode);
+                // build a blit renderer 
+                AddBlitter(eMainViewNode, eFrontBufferNode);
+            } else {
+                // render direct to front buffer - this will break srgb rendering in browsers! 
+                eMainViewNode = CreateFrontBufferRenderNode(w, h, true);
+                World.TinyEnvironment().SetEntityName(eMainViewNode, "Auto generated: Front buffer node");
+                EntityManager.AddComponent<MainViewNodeTag>(eMainViewNode);
+                Entities.WithNone<CameraAutoAspectFromDisplay>().WithAll<Camera>().ForEach((Entity e) => {
+                    EntityManager.AddComponent<CameraAutoAspectFromDisplay>(e);
+                });
+            }
 
             // gather & sort camera 
             NativeList<SortedCamera> cameras = new NativeList<SortedCamera>(Allocator.TempJob);
-            Entities.ForEach((Entity e, ref Camera c) =>
-            {
+            Entities.ForEach((Entity e, ref Camera c) => {
+                if (EntityManager.HasComponent<CameraMask>(e))
+                    if (EntityManager.GetComponentData<CameraMask>(e).mask == 0)
+                        return; // ignore non-rendering cameras;
                 cameras.Add(new SortedCamera { depth = c.depth, e = e });
             });
             cameras.Sort();
 
             // every camera needs passes - we don't really know here which one though, so just add everything for every camera. later we can remove unused passes 
             for (int i = 0; i < cameras.Length; i++)
-            {
                 CreateAllPasses(w, h, cameras[i].e, eMainViewNode);
-            }
             cameras.Dispose();
-
-            // add a target texture for main view 
-            AddRenderToTextureForNode(eMainViewNode, w, h, true, true);
-
-            // blit the main view node 
-            var eFrontBufferNode = CreateFrontBufferRenderNode(w, h, true);
-            World.TinyEnvironment().SetEntityName(eFrontBufferNode, "Auto generated: Front buffer node");
-            LinkNodes(eFrontBufferNode, eMainViewNode);
-
-            // build a blit renderer 
-            AddBlitter(eMainViewNode, eFrontBufferNode);
 
             return eMainViewNode;
         }
@@ -403,6 +435,59 @@ namespace Unity.Tiny.Rendering
             EntityManager.AddSharedComponentData(erendBlit, new RenderToPasses { e = eToBlitPasses });
         }
 
+        private void AddShadowMapPass(Entity eNode, Entity ePass, Entity eLight, int cascade, int res)
+        {
+            int dx = 0;
+            int dy = 0;
+            uint cc = 0x0000ffff; // blue
+            if ( cascade>=0 ) {
+                Assert.IsTrue(EntityManager.HasComponent<CascadeShadowmappedLight>(eLight));
+                res >>= 1;
+                switch(cascade) {
+                    // index must match cascade select in shader
+                    case 0: cc = 0xff0000ff; break; // red
+                    case 1: cc = 0xff7f00ff; dy = res; break; // orange
+                    case 2: cc = 0xffff00ff; dx = res; break; // yellow
+                    case 3: cc = 0x00ff00ff; dx = res; dy = res; break; // green
+                }
+            }
+            EntityManager.AddComponentData(ePass, new RenderPass
+            {
+                inNode = eNode,
+                sorting = RenderPassSort.Unsorted,
+                projectionTransform = float4x4.identity,
+                viewTransform = float4x4.identity,
+                passType = RenderPassType.ShadowMap,
+                viewId = 0xffff,
+                scissor = new RenderPassRect { x = (ushort)dx, y = (ushort)dy, w = (ushort)res, h = (ushort)res },
+                viewport = new RenderPassRect { x = (ushort)dx, y = (ushort)dy, w = (ushort)res, h = (ushort)res },
+#if SAFARI_WEBGL_WORKAROUND
+                clearFlags = RenderPassClear.Depth | RenderPassClear.Color,
+#else
+                clearFlags = RenderPassClear.Depth,
+#endif
+                clearRGBA = cc,
+                clearDepth = 1,
+                clearStencil = 0
+            });
+            if ( cascade>=0 ) {
+                EntityManager.AddComponentData(ePass, new RenderPassCascade {
+                    cascade = cascade
+                });
+                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCascade
+                {
+                    light = eLight,
+                    cascade = cascade
+                });
+            } else {
+                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromLight
+                {
+                    light = eLight
+                });
+            }
+            EntityManager.GetBuffer<RenderPassRef>(eNode).Add(new RenderPassRef { e = ePass });
+        }
+
         protected void BuildAllLightNodes(Entity eNodeOutput)
         {
             Assert.IsTrue(EntityManager.HasComponent<RenderNode>(eNodeOutput));
@@ -411,47 +496,34 @@ namespace Unity.Tiny.Rendering
             {
                 if (sl.shadowMapRenderNode == Entity.Null)
                 {
-                    // need a node, with a pass
+                    // need a node
                     Entity eNode = CreateNodeEntity();
+                    sl.shadowMapRenderNode = eNode;
                     EntityManager.AddComponent<RenderNode>(eNode);
-                    Entity ePass = eNode; //why not stick everything on the same entity! EntityManager.CreateEntity();
-                    EntityManager.AddComponentData(ePass, new RenderPass
-                    {
-                        inNode = eNode,
-                        sorting = RenderPassSort.Unsorted,
-                        projectionTransform = float4x4.identity,
-                        viewTransform = float4x4.identity,
-                        passType = RenderPassType.ShadowMap,
-                        viewId = 0xffff,
-                        scissor = new RenderPassRect { x = 0, y = 0, w = 0, h = 0 },
-                        viewport = new RenderPassRect { x = 0, y = 0, w = (ushort)sl.shadowMapResolution, h = (ushort)sl.shadowMapResolution },
-#if SAFARI_WEBGL_WORKAROUND
-                        clearFlags = RenderPassClear.Depth | RenderPassClear.Color,
-#else
-                        clearFlags = RenderPassClear.Depth,
-#endif
-                        clearRGBA = 0,
-                        clearDepth = 1,
-                        clearStencil = 0
-                    });
-                    EntityManager.AddComponentData(ePass, new RenderPassUpdateFromLight
-                    {
-                        light = eLight
-                    });
+
+                    if ( EntityManager.HasComponent<CascadeShadowmappedLight>(eLight) ) {
+                        // need four passes in node 
+                        for ( int i=0; i<4; i++ ) {
+                            Entity ePass = EntityManager.CreateEntity();
+                            AddShadowMapPass ( eNode, ePass, eLight, i, sl.shadowMapResolution);
+                        }
+                    } else {
+                        Entity ePass = eNode; //why not stick everything on the same entity
+                        AddShadowMapPass ( eNode, ePass, eLight, -1, sl.shadowMapResolution);
+                    }
                     EntityManager.AddComponentData(eNode, new RenderNodeShadowMap
                     {
-                        lightsource = eLight,
+                        lightsource = eLight
                     });
-                    sl.shadowMapRenderNode = eNode;
-                    EntityManager.GetBuffer<RenderPassRef>(eNode).Add(new RenderPassRef { e = ePass });
-
                     LinkNodes(eNodeOutput, eNode);
                     RenderDebug.LogFormat("Build shadow map node {0}*{0}, input to {1}", sl.shadowMapResolution, eNodeOutput);
                     World.TinyEnvironment().SetEntityName(eNode, "Auto generated: Shadow Map");
                 }
+
+                // allocate the texture if needed
                 if (sl.shadowMap == Entity.Null)
                 {
-                    AddRenderToShadowMapForNode(sl.shadowMapRenderNode, sl.shadowMapResolution, sl.shadowMapResolution);
+                    AddRenderToShadowMapForNode(sl.shadowMapRenderNode, sl.shadowMapResolution);
                     var rtt = EntityManager.GetComponentData<RenderNodeTexture>(sl.shadowMapRenderNode);
                     sl.shadowMap = rtt.depthTexture;
                     Assert.IsTrue(sl.shadowMap != Entity.Null);
@@ -491,12 +563,19 @@ namespace Unity.Tiny.Rendering
             {
                 // we only build a default graph if there are no existing nodes - otherwise assume they are already built
                 RenderDebug.Log("Auto building default render graph");
-                eMainView = BuildDefaultRenderGraph(1920, 1080);
+                bool directToFB;
+#if RENDERING_FORCE_DIRECT
+                RenderDebug.Log("Rendering directly to back buffer, this will break sRGB rendering on web platforms");
+                directToFB = true; 
+#else
+                RenderDebug.Log("Using intermediate render buffer");
+                directToFB = false; 
+#endif
+                eMainView = BuildDefaultRenderGraph(1920, 1080, directToFB); 
             }
 
             // build light nodes for lights that have no node associated 
             BuildAllLightNodes(eMainView);
-
 #if DEBUG
             var countEntsEnd = GetNumEntities();
             if (countEntsEnd != countEntsStart)
@@ -668,11 +747,20 @@ namespace Unity.Tiny.Rendering
                 OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
             });
 
-            Entities.WithNone<RenderToPasses>().ForEach((Entity e, ref GizmoLight rlgmr) =>
+            // those are things that do not render anywhere naturally, so add a to passes for gizmos 
+            Entities.WithNone<RenderToPasses>().WithAny<GizmoLight,GizmoCamera,GizmoAutoMovingDirectionalLight>().ForEach((Entity e) =>
             {
                 ShadowMask shadowMask = new ShadowMask { mask = ulong.MaxValue };
                 CameraMask cameraMask = new CameraMask { mask = 0 };
                 Entity eGroup = FindOrCreateRenderGroup(new BuildGroup { passTypes = RenderPassType.Transparent, cameraMask = cameraMask, shadowMask = shadowMask });
+                OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
+            });
+
+            Entities.WithNone<RenderToPasses>().WithAny<GizmoDebugOverlayTexture>().ForEach((Entity e) =>
+            {
+                ShadowMask shadowMask = new ShadowMask { mask = ulong.MaxValue };
+                CameraMask cameraMask = new CameraMask { mask = 0 };
+                Entity eGroup = FindOrCreateRenderGroup(new BuildGroup { passTypes = RenderPassType.DebugOverlay, cameraMask = cameraMask, shadowMask = shadowMask });
                 OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
             });
 

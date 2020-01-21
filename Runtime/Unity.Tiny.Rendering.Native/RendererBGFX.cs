@@ -17,20 +17,22 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 [assembly: InternalsVisibleTo("Unity.Tiny.RendererExtras")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Android")]
-[assembly: InternalsVisibleTo("Unity.2D.Tiny")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.Runtime")]
 
 namespace Unity.Tiny.Rendering
 {
     // use this interface to make bgfx things public to other packages, like android that
     // wants re-init functionality 
     // (except for tests)
-    public abstract class RenderingGPUSystem : ComponentSystem
+    public abstract partial class RenderingGPUSystem : ComponentSystem
     {
         public abstract void Init();
+        public abstract void Resume();
         public abstract void Shutdown();
         public abstract void ReloadAllImages();
     }
@@ -74,76 +76,56 @@ namespace Unity.Tiny.Rendering
     [AlwaysUpdateSystem]
     internal unsafe class RendererBGFXSystem : RenderingGPUSystem
     {
-        private bgfx.VertexLayoutHandle m_simpleVertexBufferDeclHandle;
-        public bgfx.VertexLayoutHandle SimpleVertexBufferDeclHandle { get { return m_simpleVertexBufferDeclHandle; } }
-        private bgfx.VertexLayout[] m_simpleVertexBufferDecl = new bgfx.VertexLayout[8];
-        public bgfx.VertexLayout[] SimpleVertexBufferDecl { get { return m_simpleVertexBufferDecl; } }
-        private bgfx.VertexLayoutHandle m_simpleLitVertexBufferDeclHandle;
-        public bgfx.VertexLayoutHandle SimpleLitVertexBufferDeclHandle { get { return m_simpleLitVertexBufferDeclHandle; } }
-        private bgfx.VertexLayout[] m_simpleLitVertexBufferDecl = new bgfx.VertexLayout[8];
-        public bgfx.VertexLayout[] SimpleLitVertexBufferDecl { get { return m_simpleLitVertexBufferDecl; } }
-        private bgfx.TextureHandle m_whiteTexture;
-        public bgfx.TextureHandle WhiteTexture { get { return m_whiteTexture; } }
-        private bgfx.TextureHandle m_greyTexture;
-        public bgfx.TextureHandle GreyTexture { get { return m_greyTexture; } }
-        private bgfx.TextureHandle m_blackTexture;
-        public bgfx.TextureHandle BlackTexture { get { return m_blackTexture; } }
-        private bgfx.TextureHandle m_upTexture;
-        public bgfx.TextureHandle UpTexture { get { return m_upTexture; } }
-        private bgfx.TextureHandle m_noShadow;
-        public bgfx.TextureHandle NoShadowTexture { get { return m_noShadow; } }
-        private SimpleShader m_simpleShader;
-        public SimpleShader SimpleShader { get { return m_simpleShader; } }
-        private LineShader m_lineShader;
-        public LineShader LineShader { get { return m_lineShader; } }
+        public bgfx.VertexLayoutHandle m_simpleVertexBufferDeclHandle;
+        public bgfx.VertexLayout[] m_simpleVertexBufferDecl = new bgfx.VertexLayout[8];
+        public bgfx.VertexLayoutHandle m_litVertexBufferDeclHandle;
+        public bgfx.VertexLayout[] m_litVertexBufferDecl = new bgfx.VertexLayout[8];
+        public bgfx.VertexLayoutHandle m_posOnlyVertexBufferDeclHandle;
+        public bgfx.VertexLayout[] m_posOnlyVertexBufferDecl = new bgfx.VertexLayout[8];
+
+        public bgfx.TextureHandle m_whiteTexture;
+        public bgfx.TextureHandle m_greyTexture;
+        public bgfx.TextureHandle m_blackTexture;
+        public bgfx.TextureHandle m_upTexture;
+        public bgfx.TextureHandle m_noShadow;
+
+        public SimpleShader m_simpleShader;
+        public LineShader m_lineShader;
         public LitShader m_litShader;
-        private ZOnlyShader m_zOnlyShader;
-        public ZOnlyShader ZOnlyShader { get { return m_zOnlyShader; } }
-        private BlitShader m_blitShader;
-        public BlitShader BlitShader { get { return m_blitShader; } }
-        private ShadowMapShader m_shadowMapShader;
-        public ShadowMapShader ShadowMapShader { get { return m_shadowMapShader; } }
+        public ZOnlyShader m_zOnlyShader;
+        public BlitShader m_blitShader;
+        public ShadowMapShader m_shadowMapShader;
 
-        private SimpleMeshBGFX m_quadMesh;
-        public SimpleMeshBGFX QuadMesh { get { return m_quadMesh; } }
-        private ExternalBlitES3Shader m_externalBlitES3Shader;
-        public ExternalBlitES3Shader ExternalBlitES3Shader { get { return m_externalBlitES3Shader; } }
+        public SimpleMeshBGFX m_quadMesh;
+        public ExternalBlitES3Shader m_externalBlitES3Shader;
+        
+        public bool m_initialized;
 
-        private bool m_initialized;
-        public bool Initialized { get { return m_initialized; } }
         private bool m_resume = false;
         private int m_fbWidth;
         private int m_fbHeight;
+        private bool m_disableVSync;
+        private bool m_disableSRGB;
 
-        internal int m_maxPerThreadData;
-        internal PerThreadDataBGFX* m_perThreadDataPtr;
-        internal NativeArray<PerThreadDataBGFX> m_perThreadData;
+        public int m_maxPerThreadData;
+        public PerThreadDataBGFX* m_perThreadDataPtr;
+        public NativeArray<PerThreadDataBGFX> m_perThreadData;
 
-        private uint m_persistentFlags;
-        public uint PersistentFlags { get { return m_persistentFlags; } set { m_persistentFlags = value; } }
-        private uint m_frameFlags;
-        public uint FrameFlags { get { return m_frameFlags; } set { m_frameFlags = value; } }
+        public uint m_persistentFlags;
+        public uint m_frameFlags;
         public bool m_homogeneousDepth;
         public bool m_originBottomLeft;
-        private float4 m_outputDebugSelect;
-        public float4 OutputDebugSelect { get { return m_outputDebugSelect; } set { m_outputDebugSelect = value; } }
+        public float4 m_outputDebugSelect;
 
-        private bool m_allowSRGBTexture;
-        public bool AllowSRGBTextures { get { return m_allowSRGBTexture; } }
+        public bool m_allowSRGBTextures;
+        public bool m_blitPrimarySRGB;
 
-        private bool m_blitPrimarySRGB;
-        public bool BlitPrimarySRGB { get { return m_blitPrimarySRGB; } }
+        public bgfx.PlatformData m_platformData;
 
-        private bgfx.PlatformData m_platformData;
-
-        private int m_screenShotWidth;
-        public int ScreenShotWidth { get { return m_screenShotWidth; } set { m_screenShotWidth = value; } }
-        private int m_screenShotHeight;
-        public int ScreenShotHeight { get { return m_screenShotHeight; } set { m_screenShotHeight = value; } }
-        private string m_screenShotPath;
-        public string ScreenShotPath { get { return m_screenShotPath; } set { m_screenShotPath = value; } }
-        private NativeList<byte> m_screenShot;
-        public NativeList<byte> ScreenShot { get { return m_screenShot; } }
+        public int m_screenShotWidth;
+        public int m_screenShotHeight;
+        public string m_screenShotPath;
+        public NativeList<byte> m_screenShot;
 
         void DestroyMesh(ref SimpleMeshBGFX mesh)
         {
@@ -153,6 +135,18 @@ namespace Unity.Tiny.Rendering
             }
             mesh.indexBufferHandle.idx = 0xffff;
             mesh.vertexBufferHandle.idx = 0xffff;
+        }
+
+        void UpdateSRGBState (bgfx.RendererType backend)
+        {
+            if (!m_disableSRGB) {
+                m_allowSRGBTextures = true;
+                m_blitPrimarySRGB = backend==bgfx.RendererType.OpenGLES;
+            } else {
+                RenderDebug.LogAlways("SRGB sampling and writing is disabled via DisplayInfo setting.");
+                m_allowSRGBTextures = false;
+                m_blitPrimarySRGB = false;
+            }
         }
 
         // helper: useful for triggering images from disk reload 
@@ -249,6 +243,7 @@ namespace Unity.Tiny.Rendering
             m_lineShader.Destroy();
             m_zOnlyShader.Destroy();
             m_blitShader.Destroy();
+            m_shadowMapShader.Destroy();
             m_externalBlitES3Shader.Destroy();
             DestroyMesh(ref m_quadMesh);
             m_perThreadData.Dispose();
@@ -291,23 +286,23 @@ namespace Unity.Tiny.Rendering
 
         public void SetFlagThisFrame(bgfx.DebugFlags flag)
         {
-            FrameFlags |= (uint)flag;
-            if (Initialized)
-                bgfx.set_debug(PersistentFlags | FrameFlags);
+            m_frameFlags |= (uint)flag;
+            if (m_initialized)
+                bgfx.set_debug(m_persistentFlags | m_frameFlags);
         }
 
         public void SetFlagPersistent(bgfx.DebugFlags flag)
         {
-            PersistentFlags |= (uint)flag;
-            if (Initialized)
-                bgfx.set_debug(PersistentFlags | FrameFlags);
+            m_persistentFlags |= (uint)flag;
+            if (m_initialized)
+                bgfx.set_debug(m_persistentFlags | m_frameFlags);
         }
 
         public void ClearFlagPersistent(bgfx.DebugFlags flag)
         {
-            PersistentFlags &= ~(uint)flag;
-            if (Initialized)
-                bgfx.set_debug(PersistentFlags | FrameFlags);
+            m_persistentFlags &= ~(uint)flag;
+            if (m_initialized)
+                bgfx.set_debug(m_persistentFlags | m_frameFlags);
         }
 
         public override void Init()
@@ -316,55 +311,72 @@ namespace Unity.Tiny.Rendering
 
             var env = World.TinyEnvironment();
             var di = env.GetConfigData<DisplayInfo>();
+#if RENDERING_FORCE_SRGB_DISABLED
+            if ( !di.disableSRGB ) {
+                di.disableSRGB = true;
+                env.SetConfigData<DisplayInfo>(di);
+                RenderDebug.Log("SRGB is disabled via a scripting define, overriding the DisplayInfo value");
+            }
+#endif
+#if RENDERING_FORCE_SRGB_ENABLED
+            if ( di.disableSRGB ) {
+                di.disableSRGB = false;
+                env.SetConfigData<DisplayInfo>(di);
+                RenderDebug.Log("SRGB is enabled via a scripting define, overriding the DisplayInfo value");
+            }
+#endif
             var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
 
             m_screenShot = new NativeList<byte>(Allocator.Persistent);
 
-            unsafe {
-                bgfx.Init init = new bgfx.Init();
-                init.callback = bgfx.CallbacksInit();
+            bgfx.Init init = new bgfx.Init();
+            init.callback = bgfx.CallbacksInit();
 #if DEBUG
-                init.debug = 1;
+            init.debug = 1;
 #else
-                init.debug = 0;
+            init.debug = 0;
 #endif
-                m_platformData = new bgfx.PlatformData { nwh = nwh.ToPointer() };
+            m_platformData = new bgfx.PlatformData { nwh = nwh.ToPointer() };
 
-                // Must be called before bgfx::init
-                fixed (bgfx.PlatformData* platformData = &m_platformData) {
-                    bgfx.set_platform_data(platformData);
-                }
-                init.platformData = m_platformData;
-                init.resolution.width = (uint)di.framebufferWidth;
-                init.resolution.height = (uint)di.framebufferHeight;
-                init.resolution.format = bgfx.TextureFormat.RGBA8;
-                init.resolution.numBackBuffers = 1;
-                init.resolution.reset = GetResetFlags(ref di);
+            // Must be called before bgfx::init
+            fixed (bgfx.PlatformData* platformData = &m_platformData) {
+                bgfx.set_platform_data(platformData);
+            }
+            init.platformData = m_platformData;
+            init.resolution.width = (uint)di.framebufferWidth;
+            init.resolution.height = (uint)di.framebufferHeight;
+            init.resolution.format = bgfx.TextureFormat.RGBA8;
+            init.resolution.numBackBuffers = 1;
+            init.resolution.reset = GetResetFlags(ref di);
 
 #if UNITY_2019_3_OR_NEWER || UNITY_DOTSPLAYER
-                m_maxPerThreadData = JobsUtility.JobWorkerCount; // could be 0 in single threaded mode
+            m_maxPerThreadData = JobsUtility.JobWorkerCount; // could be 0 in single threaded mode
 #else
-                m_maxPerThreadData = JobsUtility.MaxJobThreadCount;
+            m_maxPerThreadData = JobsUtility.MaxJobThreadCount;
 #endif
-                if (m_maxPerThreadData == 0) // main thread only mode 
-                    m_maxPerThreadData = 1;
+            if (m_maxPerThreadData == 0) // main thread only mode 
+                m_maxPerThreadData = 1;
 
-                m_perThreadData = new NativeArray<PerThreadDataBGFX>(m_maxPerThreadData, Allocator.Persistent);
-                m_perThreadDataPtr = (PerThreadDataBGFX*)m_perThreadData.GetUnsafePtr();
-                FlushViewSpaceCache();
+            m_perThreadData = new NativeArray<PerThreadDataBGFX>(m_maxPerThreadData, Allocator.Persistent);
+            m_perThreadDataPtr = (PerThreadDataBGFX*)m_perThreadData.GetUnsafePtr();
+            FlushViewSpaceCache();
 
-                init.limits.maxEncoders = (ushort)(m_maxPerThreadData + 1); // +1 for the default main thread encoder 
-                init.limits.transientVbSize = 6 << 20; // BGFX_CONFIG_TRANSIENT_VERTEX_BUFFER_SIZE;
-                init.limits.transientIbSize = 1 << 20; // BGFX_CONFIG_TRANSIENT_INDEX_BUFFER_SIZE;
+            init.limits.maxEncoders = (ushort)(m_maxPerThreadData + 1); // +1 for the default main thread encoder 
+            init.limits.transientVbSize = 6 << 20; // BGFX_CONFIG_TRANSIENT_VERTEX_BUFFER_SIZE;
+            init.limits.transientIbSize = 1 << 20; // BGFX_CONFIG_TRANSIENT_INDEX_BUFFER_SIZE;
 
-                init.type = bgfx.RendererType.Count;
-                //init.type = bgfx.RendererType.OpenGL;
+            init.type = bgfx.RendererType.Count;
+#if RENDERING_FORCE_OPENGL
+            init.type = bgfx.RendererType.OpenGL;
+#endif
 
-                m_fbHeight = di.framebufferHeight;
-                m_fbWidth = di.framebufferWidth;
-                if (!bgfx.init(&init))
-                    throw new InvalidOperationException("Failed BGFX init.");
-            }
+            m_fbHeight = di.framebufferHeight;
+            m_fbWidth = di.framebufferWidth;
+            m_disableSRGB = di.disableSRGB;
+            m_disableVSync = di.disableVSync;
+            if (!bgfx.init(&init))
+                throw new InvalidOperationException("Failed BGFX init.");
+
             RenderDebug.LogFormatAlways("BGFX init ok, backend is {0}.", GetBackendString());
 
             var caps = bgfx.get_caps();
@@ -374,32 +386,39 @@ namespace Unity.Tiny.Rendering
             if ((caps->supported & (ulong)bgfx.CapsFlags.TextureCompareLequal) == 0)
                 RenderDebug.LogFormatAlways("  No direct shadow map support.");
 
+            var backend = bgfx.get_renderer_type();
+
+            UpdateSRGBState(backend);
+            RenderDebug.LogFormatAlways("  SRGB request = {0}. SRGB textures actual = {1}. Shader SRGB blit = {2}", di.disableSRGB?"off":"on", m_allowSRGBTextures?"on":"off", m_blitPrimarySRGB?"on":"off" );
             m_persistentFlags = (uint)bgfx.DebugFlags.Text;
             bgfx.set_debug(m_persistentFlags);
+            
+            fixed (bgfx.VertexLayout* declp = m_simpleVertexBufferDecl) {
+                bgfx.vertex_layout_begin(declp, backend);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_end(declp);
+                m_simpleVertexBufferDeclHandle = bgfx.create_vertex_layout(declp);
+            }
 
-            var backend = bgfx.get_renderer_type();
-            unsafe {
-                fixed (bgfx.VertexLayout* declp = m_simpleVertexBufferDecl) {
-                    bgfx.vertex_layout_begin(declp, backend);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_end(declp);
-                    m_simpleVertexBufferDeclHandle = bgfx.create_vertex_layout(declp);
-                }
+            fixed (bgfx.VertexLayout* declp = m_litVertexBufferDecl) {
+                bgfx.vertex_layout_begin(declp, backend);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Normal, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Tangent, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Bitangent, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false); // albedo
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord1, 2, bgfx.AttribType.Float, false, false); // metal_smoothness
+                bgfx.vertex_layout_end(declp);
+                m_litVertexBufferDeclHandle = bgfx.create_vertex_layout(declp);
+            }
 
-                fixed (bgfx.VertexLayout* declp = m_simpleLitVertexBufferDecl) {
-                    bgfx.vertex_layout_begin(declp, backend);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Normal, 3, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Tangent, 3, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Bitangent, 3, bgfx.AttribType.Float, false, false);
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false); // albedo
-                    bgfx.vertex_layout_add(declp, bgfx.Attrib.TexCoord1, 2, bgfx.AttribType.Float, false, false); // metal_smoothness
-                    bgfx.vertex_layout_end(declp);
-                    m_simpleLitVertexBufferDeclHandle = bgfx.create_vertex_layout(declp);
-                }
+            fixed (bgfx.VertexLayout* declp = m_posOnlyVertexBufferDecl) {
+                bgfx.vertex_layout_begin(declp, backend);
+                bgfx.vertex_layout_add(declp, bgfx.Attrib.Position, 3, bgfx.AttribType.Float, false, false);
+                m_posOnlyVertexBufferDeclHandle = bgfx.create_vertex_layout(declp);
             }
 
             // Init from the singleton shader entity that contains shader blob assets
@@ -413,29 +432,26 @@ namespace Unity.Tiny.Rendering
             Assert.IsTrue(shaderData.BlitSRGBShader != Entity.Null);
             Assert.IsTrue(shaderData.ShadowMapShader != Entity.Null);
 
-            unsafe
-            {
-                int fsl, vsl = 0;
-                byte* fs_ptr = null;
-                byte* vs_ptr = null;
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.SimpleShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_simpleShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
+            int fsl, vsl = 0;
+            byte* fs_ptr = null;
+            byte* vs_ptr = null;
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.SimpleShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_simpleShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.LitShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_litShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.LitShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_litShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.LineShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_lineShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.LineShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_lineShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.ZOnlyShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_zOnlyShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.ZOnlyShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_zOnlyShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.BlitSRGBShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_blitShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.BlitSRGBShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_blitShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
-                BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.ShadowMapShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
-                m_shadowMapShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
-            }
+            BGFXShaderHelper.GetPrecompiledShaderData(EntityManager, shaderData.ShadowMapShader, backend, ref fs_ptr, out fsl, ref vs_ptr, out vsl);
+            m_shadowMapShader.Init(fs_ptr, fsl, vs_ptr, vsl, backend);
 
             //if (backend == bgfx.RendererType.OpenGLES)
             //    m_externalBlitES3Shader.Init(backend);
@@ -458,24 +474,21 @@ namespace Unity.Tiny.Rendering
 
             World.GetExistingSystem<SubmitFrameSystem>().Enabled = true;
 
-            if (backend==bgfx.RendererType.OpenGLES)
-                m_blitPrimarySRGB = true;
-
-            if (!di.disableSRGB) {
-                m_allowSRGBTexture = true;
-            } else {
-                RenderDebug.LogAlways("SRGB sampling and writing is disabled via DisplayInfo setting.");
-                m_allowSRGBTexture = false;
-                m_blitPrimarySRGB = false;
-            }
-
-
-
             m_initialized = true;
+        }
+
+        public override void Resume()
+        {
+            m_resume = true;
         }
 
         protected override void OnStartRunning()
         {
+            if (!HasSingleton<PrecompiledShaders>())
+            {
+                return;
+            }
+            
             base.OnStartRunning();
             if (m_initialized)
                 return;
@@ -553,7 +566,7 @@ namespace Unity.Tiny.Rendering
                         s = StringFromCString(callbackMem + e.additionalAllocatedDataStart);
                         RenderDebug.LogAlways(s);
                         bgfx.CallbacksUnlockAndClear();
-                        throw new InvalidOperationException("BGFX FATAL");
+                        throw new InvalidOperationException(s);
                     case bgfx.CallbackType.Trace:
                         s = StringFromCString(callbackMem + e.additionalAllocatedDataStart);
                         RenderDebug.LogAlways(s);
@@ -614,7 +627,7 @@ namespace Unity.Tiny.Rendering
             var env = World.TinyEnvironment();
             var di = env.GetConfigData<DisplayInfo>();
             var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle().ToPointer();
-            bool needReset = di.width != m_fbWidth || di.height != m_fbHeight;
+            bool needReset = di.width != m_fbWidth || di.height != m_fbHeight || di.disableVSync != m_disableVSync || di.disableSRGB != m_disableSRGB;
             if (m_platformData.nwh != nwh) {
                 m_platformData.nwh = nwh;
                 fixed (bgfx.PlatformData* platformData = &m_platformData) {
@@ -627,7 +640,10 @@ namespace Unity.Tiny.Rendering
                 bgfx.reset((uint)di.width, (uint)di.height, GetResetFlags(ref di), bgfx.TextureFormat.RGBA8);
                 m_fbWidth = di.width;
                 m_fbHeight = di.height;
-                RenderDebug.LogFormatAlways("Resize BGFX to {0}, {1}", m_fbWidth, m_fbHeight);
+                m_disableVSync = di.disableVSync;
+                m_disableSRGB = di.disableSRGB;
+                UpdateSRGBState(bgfx.get_renderer_type());
+                RenderDebug.LogFormatAlways("Resized BGFX to {0}, {1}", m_fbWidth, m_fbHeight);
             }
             FlushViewSpaceCache();
             UploadTextures();
@@ -677,8 +693,8 @@ namespace Unity.Tiny.Rendering
             outMesh.externalOwner = false;
             outMesh.bounds = mesh.Mesh.Value.Bounds;
             outMesh.indexBufferHandle = bgfx.create_index_buffer(CreateMemoryBlock((byte*)indices, nindices * 2), (ushort)bgfx.BufferFlags.None);
-            outMesh.vertexDeclHandle = m_simpleLitVertexBufferDeclHandle;
-            fixed (bgfx.VertexLayout* declp = m_simpleLitVertexBufferDecl)
+            outMesh.vertexDeclHandle = m_litVertexBufferDeclHandle;
+            fixed (bgfx.VertexLayout* declp = m_litVertexBufferDecl)
                 outMesh.vertexBufferHandle = bgfx.create_vertex_buffer(CreateMemoryBlock((byte*)vertices, nvertices * sizeof(LitVertex)), declp, (ushort)bgfx.BufferFlags.None);
             RenderDebug.LogFormat("Uploaded lit & packed BGFX mesh with {0} indices, {1} vertices.", nindices, nvertices);
             return outMesh;
@@ -742,6 +758,32 @@ namespace Unity.Tiny.Rendering
             });
         }
 
+#if RENDERING_ENABLE_TRACE
+        private static string BGFXSamplerFlagsToString(ulong flags)
+        {
+            string s = "";
+            if ((flags & (ulong)bgfx.SamplerFlags.UClamp) != 0)
+                s += "[UClamp]";
+            if ((flags & (ulong)bgfx.SamplerFlags.VClamp) != 0)
+                s += "[VClamp]";
+            if ((flags & (ulong)bgfx.SamplerFlags.UMirror) != 0)
+                s += "[UMirror]";
+            if ((flags & (ulong)bgfx.SamplerFlags.VMirror) != 0)
+                s += "[VMirror]";
+            if ((flags & (ulong)bgfx.TextureFlags.Srgb) != 0)
+                s += "{Srgb}";
+            if ((flags & (ulong)bgfx.SamplerFlags.MipPoint) != 0)
+                s += "[MipPoint]";
+            if ((flags & (ulong)bgfx.SamplerFlags.MinPoint) != 0)
+                s += "[MinPoint]";
+            if ((flags & (ulong)bgfx.SamplerFlags.MagPoint) != 0)
+                s += "[MagPoint]";
+            if ((flags & (ulong)bgfx.TextureFlags.Rt) != 0)
+                s += "{Rt}";
+            return s;
+        }
+#endif
+
         private ulong TextureFlagsToBGFXSamplerFlags(Image2D im2d)
         {
             ulong samplerFlags = 0; //Default is repeat and trilinear
@@ -756,7 +798,7 @@ namespace Unity.Tiny.Rendering
                 samplerFlags |= (ulong)bgfx.SamplerFlags.VMirror;
             if ((im2d.flags & TextureFlags.Point) == TextureFlags.Point)
                 samplerFlags |= (ulong)bgfx.SamplerFlags.Point;
-            if (m_allowSRGBTexture && (im2d.flags & TextureFlags.Srgb) == TextureFlags.Srgb)
+            if (m_allowSRGBTextures && (im2d.flags & TextureFlags.Srgb) == TextureFlags.Srgb)
                 samplerFlags |= (ulong)bgfx.TextureFlags.Srgb;
             if ((im2d.flags & TextureFlags.MimapEnabled) == TextureFlags.MimapEnabled &&
                 (im2d.flags & TextureFlags.Linear) == TextureFlags.Linear)
@@ -909,7 +951,10 @@ namespace Unity.Tiny.Rendering
                     handle = handle,
                     externalOwner = false
                 });
-                RenderDebug.LogFormat("Created BGFX render target texture {0},{1} to bgfx index {2}", (int)w, (int)h, (int)handle.idx);
+#if RENDERING_ENABLE_TRACE
+                RenderDebug.LogFormat("Created BGFX render target texture {0},{1} with format {3} flags {4} to bgfx index {2}", (int)w, (int)h, (int)handle.idx, 
+                    (int)fmt, BGFXSamplerFlagsToString(flags) );
+#endif
             });
             ecb.Playback(EntityManager);
             ecb.Dispose();
@@ -983,36 +1028,23 @@ namespace Unity.Tiny.Rendering
 
         public bool HasScreenShot()
         {
-            return ScreenShot.IsCreated && ScreenShot.Length != 0;
+            return m_screenShot.IsCreated && m_screenShot.Length != 0;
         }
 
         public void ResetScreenShot()
         {
-            ScreenShotWidth = 0;
-            ScreenShotHeight = 0;
-            ScreenShotPath = null;
-            ScreenShot.ResizeUninitialized(0);
+            m_screenShotWidth = 0;
+            m_screenShotHeight = 0;
+            m_screenShotPath = null;
+            m_screenShot.ResizeUninitialized(0);
         }
 
         public void RequestScreenShot(string s)
         {
             // invalidate previous
-            if (ScreenShot.Length != 0)
-                RenderDebug.LogFormat("Warning, previous screen shot {0} still allocated. It will be overwritten.", ScreenShotPath);
+            if (m_screenShot.Length != 0)
+                RenderDebug.LogFormat("Warning, previous screen shot {0} still allocated. It will be overwritten.", m_screenShotPath);
             bgfx.request_screen_shot(new bgfx.FrameBufferHandle { idx = 0xffff }, s);
-        }
-
-        // TODO: pause state should move to caller, does not belong in here really
-        public void Pause(bool paused)
-        {
-            if (paused)
-            {
-                Shutdown();
-            }
-            else
-            {
-                m_resume = true;
-            }
         }
     }
 
@@ -1049,7 +1081,7 @@ namespace Unity.Tiny.Rendering
         protected unsafe override void OnUpdate()
         {
             var sys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!sys.Initialized)
+            if (!sys.m_initialized)
                 return;
             for (int i = 0; i < sys.m_maxPerThreadData; i++) {
                 if (sys.m_perThreadDataPtr[i].encoder != null) {
@@ -1064,8 +1096,8 @@ namespace Unity.Tiny.Rendering
             // go bgfx!
             bgfx.frame(false);
 
-            sys.FrameFlags = 0;
-            bgfx.set_debug(sys.PersistentFlags);
+            sys.m_frameFlags = 0;
+            bgfx.set_debug(sys.m_persistentFlags);
         }
     }
 }

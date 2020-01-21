@@ -46,6 +46,7 @@ namespace Unity.Tiny.Rendering
         public fixed float podl_positionOrDirViewSpace[LightingBGFX.maxPointOrDirLights * 4];
         public float4 mappedLight0_viewPosOrDir;
         public float4 mappedLight1_viewPosOrDir;
+        public float4 csmLight_viewPosOrDir;
         public int cacheTag; // must init and invalidate as -1
     }
 
@@ -65,6 +66,12 @@ namespace Unity.Tiny.Rendering
         public MappedLightBGFX mappedLight1;
         public float4 mappedLight01sis;
 
+        public const int maxCsmLights = 1;
+        public int numCsmLights; 
+        public MappedLightBGFX csmLight; // also mapped light2 
+        public float4 csmLightsis;
+        public fixed float csmOffsetScale[4*4];
+
         public void SetMappedLight(int idx, float4x4 m, float3 color, float4 worldPosOrDir, float range, float4 mask, bgfx.TextureHandle shadowMap, int shadowMapSize)
         {
             switch (idx) {
@@ -73,10 +80,16 @@ namespace Unity.Tiny.Rendering
                     mappedLight01sis.x = (float)shadowMapSize;
                     mappedLight01sis.y = 1.0f / (float)shadowMapSize;
                     break;
-                case 1: 
+                case 1:
                     mappedLight1.Set(m, color, worldPosOrDir, range, mask, shadowMap);
                     mappedLight01sis.z = (float)shadowMapSize;
                     mappedLight01sis.w = 1.0f / (float)shadowMapSize;
+                    break;
+                case 2:
+                    csmLight.Set(m, color, worldPosOrDir, range, mask, shadowMap);
+                    csmLightsis.x = (float)shadowMapSize; // full size, not cascade size
+                    csmLightsis.y = 1.0f / (float)shadowMapSize;
+                    csmLightsis.z = 1.0f - 3.0f * csmLightsis.y; // border around cascades, in normalized [-1..1] 
                     break;
                 default: throw new IndexOutOfRangeException();
             };
@@ -99,6 +112,7 @@ namespace Unity.Tiny.Rendering
             // mapped lights 
             dest.mappedLight0_viewPosOrDir = math.mul(viewTx, mappedLight0.worldPosOrDir);
             dest.mappedLight1_viewPosOrDir = math.mul(viewTx, mappedLight1.worldPosOrDir);
+            dest.csmLight_viewPosOrDir = math.mul(viewTx, csmLight.worldPosOrDir);
             dest.cacheTag = viewId;
         }
 
@@ -149,7 +163,7 @@ namespace Unity.Tiny.Rendering
         protected override void OnUpdate()
         {
             var sys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!sys.Initialized)
+            if (!sys.m_initialized)
                 return;
 
             Entities.ForEach((Entity e, ref BlitRenderer br) =>
@@ -174,9 +188,9 @@ namespace Unity.Tiny.Rendering
                             m.c0.x = srcAspect / destAspect; m.c1.y = 1.0f;
                         }
                     }
-                    if (sys.BlitPrimarySRGB) {
+                    if (sys.m_blitPrimarySRGB) {
                         // need to convert linear to srgb if we are not rendering to a texture in linear workflow
-                        bool toPrimaryWithSRGB = EntityManager.HasComponent<RenderNodePrimarySurface>(pass.inNode) && sys.AllowSRGBTextures;
+                        bool toPrimaryWithSRGB = EntityManager.HasComponent<RenderNodePrimarySurface>(pass.inNode) && sys.m_allowSRGBTextures;
                         if (!toPrimaryWithSRGB)
                             SubmitHelper.SubmitBlitDirectFast(sys, pass.viewId, ref m, br.color, tex.handle);
                         else
@@ -196,7 +210,7 @@ namespace Unity.Tiny.Rendering
         protected override void OnUpdate()
         {
             var sys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!sys.Initialized)
+            if (!sys.m_initialized)
                 return;
             // get all MeshRenderer, cull them, and add them to graph nodes that need them 
             // any mesh renderer MUST have a shared component data that has a list of passes to render to
@@ -213,14 +227,11 @@ namespace Unity.Tiny.Rendering
                 for (int i = 0; i < toPasses.Length; i++) {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
-                    if (EntityManager.HasComponent<Frustum>(ePass)) {
-                        var frustum = EntityManager.GetComponentData<Frustum>(ePass);
-                        if (Culling.Cull(ref wbs, ref frustum) == Culling.CullingResult.Outside)
-                            continue;
-                        // double cull as example only
-                        if (Culling.IsCulled(ref wb, ref frustum))
-                            continue;
-                    }
+                    if (Culling.Cull(ref wbs, ref pass.frustum) == Culling.CullingResult.Outside)
+                        continue;
+                    // double cull as example only
+                    if (Culling.IsCulled(ref wb, ref pass.frustum))
+                        continue;
                     var mesh = EntityManager.GetComponentData<SimpleMeshBGFX>(meshRef.mesh);
                     switch (pass.passType) {
                         case RenderPassType.ZOnly:
@@ -263,7 +274,6 @@ namespace Unity.Tiny.Rendering
             [ReadOnly] public ComponentDataFromEntity<RenderPass> ComponentRenderPass;
             [ReadOnly] public ComponentDataFromEntity<LitMaterialBGFX> ComponentLitMaterialBGFX;
             [ReadOnly] public ComponentDataFromEntity<LightingBGFX> ComponentLightingBGFX;
-            [ReadOnly] public ComponentDataFromEntity<Frustum> ComponentFrustum;
             [ReadOnly] public ComponentDataFromEntity<LitMeshRenderData> ComponentMeshRenderData;
 #pragma warning disable 0649
             [NativeSetThreadIndex] internal int ThreadIndex;
@@ -298,21 +308,17 @@ namespace Unity.Tiny.Rendering
                 // TODO: profile what is better!
                 for (int i = 0; i < toPasses.Length; i++) {
                     Entity ePass = toPasses[i].e;
-                    Frustum frustum = default;
-                    if (ComponentFrustum.Exists(ePass)) {
-                        frustum = ComponentFrustum[ePass]; // TODO, just make frustum a member of pass?
-                        if (Culling.Cull(ref boundingSphere, ref frustum) == Culling.CullingResult.Outside)
-                            continue; // nothing to do for this pass
-                    }
+                    RenderPass pass = ComponentRenderPass[ePass];
+                    if (Culling.Cull(ref boundingSphere, ref pass.frustum) == Culling.CullingResult.Outside)
+                        continue; // nothing to do for this pass
                     Assert.IsTrue(encoder != null);
-                    var pass = ComponentRenderPass[ePass];
                     for (int j = 0; j < chunk.Count; j++) {
                         var wbs = chunkWorldBoundingSphere[j];
                         var meshRenderer = chunkMeshRenderer[j];
                         var meshRef = chunkMeshReference[j];
                         var mesh = ComponentSimpleMeshBGFX[meshRef.mesh];
                         var tx = chunkLocalToWorld[j].Value;
-                        if (Culling.Cull(ref wbs, ref frustum) == Culling.CullingResult.Outside) // TODO: fine cull only if rough culling was !Inside
+                        if (Culling.Cull(ref wbs, ref pass.frustum) == Culling.CullingResult.Outside) // TODO: fine cull only if rough culling was !Inside
                             continue;
                         switch (pass.passType) { // TODO: we can hoist this out of the loop 
                             case RenderPassType.ZOnly:
@@ -359,7 +365,7 @@ namespace Unity.Tiny.Rendering
         protected unsafe override JobHandle OnUpdate(JobHandle inputDeps)
         {
             var sys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!sys.Initialized)
+            if (!sys.m_initialized)
                 return inputDeps;
 
             var chunks = m_query.CreateArchetypeChunkArray(Allocator.Temp);
@@ -391,7 +397,6 @@ namespace Unity.Tiny.Rendering
                 ComponentRenderPass = GetComponentDataFromEntity<RenderPass>(true),
                 ComponentLitMaterialBGFX = GetComponentDataFromEntity<LitMaterialBGFX>(true),
                 ComponentLightingBGFX = GetComponentDataFromEntity<LightingBGFX>(true),
-                ComponentFrustum = GetComponentDataFromEntity<Frustum>(true),
                 PerThreadData = sys.m_perThreadDataPtr,
                 MaxPerThreadData = sys.m_maxPerThreadData,
                 BGFXSystem = World.GetExistingSystem<RendererBGFXSystem>()
@@ -408,11 +413,12 @@ namespace Unity.Tiny.Rendering
     [UpdateBefore(typeof(SubmitSystemGroup))]
     public class UpdateBGFXLightSetups : ComponentSystem
     {
-        private void AddMappedLight(ref LightingBGFX r, ref ShadowmappedLight sml, ref Light l, ref float4x4 tx, ref LightMatrices txCache, RendererBGFXSystem sys, bool isSpot)
+        private void AddCascadeMappedLight(ref LightingBGFX r, ref ShadowmappedLight sml, ref Light l, ref float4x4 tx, ref LightMatrices txCache, 
+            ref CascadeShadowmappedLight csm, ref CascadeShadowmappedLightCache csmData, RendererBGFXSystem sys)
         {
-            if (r.numMappedLights >= LightingBGFX.maxMappedLights)
-                throw new InvalidOperationException("Too many mapped lights");
-            bgfx.TextureHandle texShadowMap = sys.NoShadowTexture;
+            if (r.numCsmLights >= LightingBGFX.maxCsmLights)
+                throw new InvalidOperationException("Too many cascade mapped lights");
+            bgfx.TextureHandle texShadowMap = sys.m_noShadow;
             int shadowMapSize = 1;
             if (sml.shadowMap != Entity.Null && EntityManager.HasComponent<TextureBGFX>(sml.shadowMap))
             {
@@ -421,10 +427,49 @@ namespace Unity.Tiny.Rendering
                 shadowMapSize = imShadowMap.imagePixelHeight;
                 texShadowMap = EntityManager.GetComponentData<TextureBGFX>(sml.shadowMap).handle;
             }
-            float4 mask = isSpot ? new float4(1.0f, 1.0f, 1.0f, 0.0f) : new float4(0.0f, 0.0f, 0.0f, 1.0f);
+            float4 worldPosOrDir = new float4(math.normalize(-tx.c2.xyz), 0.0f);
+            float4 mask = new float4(0);
+            r.SetMappedLight(LightingBGFX.maxMappedLights + r.numCsmLights, txCache.mvp, l.color * l.intensity, worldPosOrDir, l.clipZFar, mask, texShadowMap, shadowMapSize);
+            unsafe { 
+                r.csmOffsetScale[0]  = csmData.c0.offset.x; r.csmOffsetScale[1]  = csmData.c0.offset.y; r.csmOffsetScale[2]  = 0; r.csmOffsetScale[3]  = csmData.c0.scale;
+                r.csmOffsetScale[4]  = csmData.c1.offset.x; r.csmOffsetScale[5]  = csmData.c1.offset.y; r.csmOffsetScale[6]  = 0; r.csmOffsetScale[7]  = csmData.c1.scale;
+                r.csmOffsetScale[8]  = csmData.c2.offset.x; r.csmOffsetScale[9]  = csmData.c2.offset.y; r.csmOffsetScale[10] = 0; r.csmOffsetScale[11] = csmData.c2.scale;
+                r.csmOffsetScale[12] = csmData.c3.offset.x; r.csmOffsetScale[13] = csmData.c3.offset.y; r.csmOffsetScale[14] = 0; r.csmOffsetScale[15] = csmData.c3.scale;
+            }
+            // r.csmLightsis set in SetMappedLight
+            r.numCsmLights++;
+        }
+
+        private void AddMappedLight(ref LightingBGFX r, ref ShadowmappedLight sml, ref Light l, ref float4x4 tx, ref LightMatrices txCache, RendererBGFXSystem sys, bool isSpot, float4 spotmask)
+        {
+            if (r.numMappedLights >= LightingBGFX.maxMappedLights)
+                throw new InvalidOperationException("Too many mapped lights");
+            bgfx.TextureHandle texShadowMap = sys.m_noShadow;
+            int shadowMapSize = 1;
+            if (sml.shadowMap != Entity.Null && EntityManager.HasComponent<TextureBGFX>(sml.shadowMap))
+            {
+                var imShadowMap = EntityManager.GetComponentData<Image2D>(sml.shadowMap);
+                Assert.IsTrue(imShadowMap.imagePixelWidth == imShadowMap.imagePixelHeight);
+                shadowMapSize = imShadowMap.imagePixelHeight;
+                texShadowMap = EntityManager.GetComponentData<TextureBGFX>(sml.shadowMap).handle;
+            }
+            float4 mask = isSpot ? spotmask : new float4(0.0f, 0.0f, 0.0f, 1.0f);
             float4 worldPosOrDir = isSpot? new float4(tx.c3.xyz, 1.0f) : new float4(-tx.c2.xyz, 0.0f);
             r.SetMappedLight(r.numMappedLights, txCache.mvp, l.color * l.intensity, worldPosOrDir, l.clipZFar, mask, texShadowMap, shadowMapSize);
             r.numMappedLights++;
+        }
+
+        private float4 ComputeSpotMask(float innerRadius, float ratio)
+        {
+            Assert.IsTrue ( innerRadius >= 0.0f && innerRadius < 1.0f );
+            Assert.IsTrue ( ratio > 0.0f && ratio <= 1.0f );
+            // math in shader: 
+            // vec2 s = params.xy * ndcpos.xy;
+            // return min ( max ( params.z - dot(s, s), params.w ), 1.0 );
+            // unit: innerRadius = 0, ratio = 1
+            float iri = 1.0f / (1.0f - innerRadius);
+            float siri = math.sqrt(iri);
+            return new float4 ( siri, 1.0f / ratio * siri, 1.0f + innerRadius*iri, 0.0f );
         }
 
         protected override void OnUpdate()
@@ -435,8 +480,9 @@ namespace Unity.Tiny.Rendering
             Entities.ForEach((ref LightingBGFX r) =>
             {
                 r = default;
-                r.mappedLight0.shadowMap = sys.NoShadowTexture;
-                r.mappedLight1.shadowMap = sys.NoShadowTexture;
+                r.mappedLight0.shadowMap = sys.m_noShadow;
+                r.mappedLight1.shadowMap = sys.m_noShadow;
+                r.csmLight.shadowMap = sys.m_noShadow;
             });
 
             Entities.ForEach((DynamicBuffer<LightToBGFXLightingSetup> dest, ref Light l, ref AmbientLight al) =>
@@ -478,17 +524,26 @@ namespace Unity.Tiny.Rendering
                 // matrix for now: world -> light projection
                 for (int i = 0; i < dest.Length; i++) {
                     LightingBGFX r = EntityManager.GetComponentData<LightingBGFX>(dest[i].e);
-                    AddMappedLight(ref r, ref sml, ref l, ref tx.Value, ref txCache, sys, true);
+                    float4 spotmask = ComputeSpotMask(sl.innerRadius, sl.ratio);
+                    AddMappedLight(ref r, ref sml, ref l, ref tx.Value, ref txCache, sys, true, spotmask);
                     EntityManager.SetComponentData<LightingBGFX>(dest[i].e, r);
                 }
             });
 
-            Entities.ForEach((Entity e, DynamicBuffer<LightToBGFXLightingSetup> dest, ref LocalToWorld tx, ref LightMatrices txCache, ref Light l, ref DirectionalLight dl, ref ShadowmappedLight sml) =>
+            Entities.ForEach((Entity e, DynamicBuffer<LightToBGFXLightingSetup> dest, ref LocalToWorld tx, 
+                ref LightMatrices txCache, ref Light l, ref DirectionalLight dl, ref ShadowmappedLight sml) =>
             {
                 // matrix: world -> light projection
+                Assert.IsTrue(EntityManager.HasComponent<NonUniformScale>(e));
                 for (int i = 0; i < dest.Length; i++) {
                     LightingBGFX r = EntityManager.GetComponentData<LightingBGFX>(dest[i].e);
-                    AddMappedLight(ref r, ref sml, ref l, ref tx.Value, ref txCache, sys, false);
+                    if (EntityManager.HasComponent<CascadeShadowmappedLight>(e)) {
+                        var csm = EntityManager.GetComponentData<CascadeShadowmappedLight>(e);
+                        var csmData = EntityManager.GetComponentData<CascadeShadowmappedLightCache>(e);
+                        AddCascadeMappedLight(ref r, ref sml, ref l, ref tx.Value, ref txCache, ref csm, ref csmData, sys);
+                    } else { 
+                        AddMappedLight(ref r, ref sml, ref l, ref tx.Value, ref txCache, sys, false, new float4(0));
+                    }
                     EntityManager.SetComponentData<LightingBGFX>(dest[i].e, r);
                 }
             });

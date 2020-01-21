@@ -7,9 +7,9 @@ So, we need to make these c++ callbacks and gather events in buffers that we can
 Don't care about multiple instances, it's all a single one and static anyway
 */
 
-#include <mutex>
+#include <baselibext.h>
+#include <Cpp/Time.h>
 #include <vector>
-#include <chrono>
 #include <memory>
 #include <string.h>
 #include <stdlib.h>
@@ -206,10 +206,10 @@ static bgfx_callback_interface_s cb_interface;
 static bgfx_callback_vtbl_s cb_vtbl;
 static std::vector<char> logbuffer;
 static std::vector<BGFXCallbackEntry> calllog;
-static std::mutex mutex;
+static baselib::Lock mutex;
 
 static uint64_t getHighResTime() {
-    return (uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    return (uint64_t)baselib::high_precision_clock::now_in_ticks();
 }
 
 static void addEntry(BGFXCallbackEntryType t, const char* mem, int memLen) {
@@ -278,7 +278,7 @@ static void writeTGA(FILE *f, int w, int h, int pitch, const char *data, bool yf
 // callbacks from bgfx, any thread
 static void fatal(bgfx_callback_interface_t* _this, const char* _filePath, uint16_t _line, bgfx_fatal_t _code, const char* _str) {
     { // don't hold mutex for abort
-        std::lock_guard<std::mutex> lock(mutex);
+		BaselibLock lock(mutex);
         _filePath = stripPath(_filePath);
         char buf[4096] = { 0 };
         snprintf(buf, sizeof(buf), "FATAL: %x %s at %s:%i", (int)_code, _str, _filePath, _line);
@@ -289,7 +289,7 @@ static void fatal(bgfx_callback_interface_t* _this, const char* _filePath, uint1
 }
 
 static void trace_vargs(bgfx_callback_interface_t* _this, const char* _filePath, uint16_t _line, const char* _format, va_list _argList) {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     _filePath = stripPath(_filePath);
     char buf[4096] = { 0 };
     char buf2[4096] = { 0 };
@@ -301,7 +301,7 @@ static void trace_vargs(bgfx_callback_interface_t* _this, const char* _filePath,
 }
 
 static void profiler_begin(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     _filePath = stripPath(_filePath);
     char buf[4096] = { 0 };
     snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
@@ -309,7 +309,7 @@ static void profiler_begin(bgfx_callback_interface_t* _this, const char* _name, 
 }
 
 static void profiler_begin_literal(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     _filePath = stripPath(_filePath);
     char buf[4096] = { 0 };
     snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
@@ -317,7 +317,7 @@ static void profiler_begin_literal(bgfx_callback_interface_t* _this, const char*
 }
 
 static void profiler_end(bgfx_callback_interface_t* _this) {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     addEntryString(BGFXCallbackEntryType::ProfilerEnd, 0);
 }
 
@@ -333,7 +333,7 @@ static void cache_write(bgfx_callback_interface_t* _this, uint64_t _id, const vo
 }
 
 static void screen_shot(bgfx_callback_interface_t* _this, const char* _filePath, uint32_t _width, uint32_t _height, uint32_t _pitch, const void* _data, uint32_t _size, bool _yflip) {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     BGFXScreenShotDesc ds;
     ds.width = (int)_width;
     ds.height = (int)_height;
@@ -379,7 +379,7 @@ static void capture_frame(bgfx_callback_interface_t* _this, const void* _data, u
 
 // called from c#, main thread
 DOTS_EXPORT(void*) BGFXCB_Init() {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     cb_vtbl.fatal = &fatal;
     cb_vtbl.trace_vargs = &trace_vargs;
     cb_vtbl.profiler_begin = &profiler_begin;
@@ -397,14 +397,14 @@ DOTS_EXPORT(void*) BGFXCB_Init() {
 }
 
 DOTS_EXPORT(void) BGFXCB_DeInit() {
-    std::lock_guard<std::mutex> lock(mutex);
+	BaselibLock lock(mutex);
     memset(&cb_vtbl, 0, sizeof(cb_vtbl));
     logbuffer.clear();
     calllog.clear();
 }
 
 DOTS_EXPORT(int) BGFXCB_Lock(char **text, BGFXCallbackEntry **log) {
-    mutex.lock();
+    mutex.Acquire();
     if (!calllog.empty()) {
         *log = calllog.data();
         *text = logbuffer.data();
@@ -418,6 +418,6 @@ DOTS_EXPORT(int) BGFXCB_Lock(char **text, BGFXCallbackEntry **log) {
 DOTS_EXPORT(void) BGFXCB_UnlockAndClear() {
     calllog.clear();
     logbuffer.clear();
-    mutex.unlock();
+    mutex.Release();
 }
 

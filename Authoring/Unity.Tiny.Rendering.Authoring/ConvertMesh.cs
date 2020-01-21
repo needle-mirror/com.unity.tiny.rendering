@@ -7,6 +7,7 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.TinyConversion
 {
@@ -219,6 +220,14 @@ namespace Unity.TinyConversion
                     Mesh = mesh
                 });
             }
+        }
+
+        public override bool ShouldRunConversionSystem()
+        {
+            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
+            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+                return false;
+            return base.ShouldRunConversionSystem();
         }
 
         protected override void OnUpdate()

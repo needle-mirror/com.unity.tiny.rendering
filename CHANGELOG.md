@@ -4,10 +4,14 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [0.20.0-preview.3] - 2019-12-10
+## [0.21.0] - 2020-01-21
+
+* Add support for cascade shadow maps (1 csm directional light, fixed to four cascades). Refer to the CascadeShadowmappedLight component for more information.
+* Add support for spot light inner angle.
+* Fix culling under non-uniform scale when CompositeScale is used
+* Update package dependencies
+
+## [0.20.0] - 2019-12-10
 
 * Update the package to use Unity '2019.3.0f1' or later
-
-## [0.20.0-preview.2] - 2019-12-04
-
 * This is the first release of Project Tiny lightweight rendering package.

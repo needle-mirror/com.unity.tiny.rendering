@@ -115,19 +115,25 @@ namespace Unity.Tiny.Rendering
         public MappedLight m_mappedLight0;
         public MappedLight m_mappedLight1;
         public bgfx.UniformHandle m_texShadow01sis;
+       
+        public bgfx.UniformHandle m_samplerShadowCSM;
+        public bgfx.UniformHandle m_offsetScaleCSM;
+        public bgfx.UniformHandle m_sisCSM;
+        public bgfx.UniformHandle m_dirCSM;
+        public bgfx.UniformHandle m_colorCSM;
 
-        public bgfx.UniformHandle m_samplerAlbedo;
+        public bgfx.UniformHandle m_samplerAlbedoOpacity;
         public bgfx.UniformHandle m_samplerEmissive;
-        public bgfx.UniformHandle m_samplerOpacity;
         public bgfx.UniformHandle m_samplerSmoothness;
         public bgfx.UniformHandle m_samplerMetal;
         public bgfx.UniformHandle m_samplerNormal;
-
+        
         public bgfx.UniformHandle m_uniformAmbient;
         public bgfx.UniformHandle m_uniformEmissiveNormalZScale;
         public bgfx.UniformHandle m_uniformOutputDebugSelect;
 
         // vertex 
+        public bgfx.UniformHandle m_matrixCSM;
         public bgfx.UniformHandle m_uniformAlbedoOpacity;
         public bgfx.UniformHandle m_uniformMetalSmoothness;
         public bgfx.UniformHandle m_uniformTexMad;
@@ -161,12 +167,11 @@ namespace Unity.Tiny.Rendering
         {
             m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "lit");
 
-            m_samplerAlbedo = bgfx.create_uniform("s_texAlbedo", bgfx.UniformType.Sampler, 1);
+            m_samplerAlbedoOpacity = bgfx.create_uniform("s_texAlbedoOpacity", bgfx.UniformType.Sampler, 1);
             m_samplerMetal = bgfx.create_uniform("s_texMetal", bgfx.UniformType.Sampler, 1);
             m_samplerNormal = bgfx.create_uniform("s_texNormal", bgfx.UniformType.Sampler, 1);
             m_samplerSmoothness = bgfx.create_uniform("s_texSmoothness", bgfx.UniformType.Sampler, 1);
             m_samplerEmissive = bgfx.create_uniform("s_texEmissive", bgfx.UniformType.Sampler, 1);
-            m_samplerOpacity = bgfx.create_uniform("s_texOpacity", bgfx.UniformType.Sampler, 1);
 
             m_uniformAlbedoOpacity = bgfx.create_uniform("u_albedo_opacity", bgfx.UniformType.Vec4, 1);
             m_uniformMetalSmoothness = bgfx.create_uniform("u_metal_smoothness", bgfx.UniformType.Vec4, 1);
@@ -180,6 +185,14 @@ namespace Unity.Tiny.Rendering
             InitMappedLight(ref m_mappedLight1, "1");
             m_texShadow01sis = bgfx.create_uniform("u_texShadow01sis", bgfx.UniformType.Vec4, 1);
 
+            m_samplerShadowCSM = bgfx.create_uniform("s_texShadowCSM", bgfx.UniformType.Sampler, 1);
+            m_offsetScaleCSM = bgfx.create_uniform("u_csm_offset_scale", bgfx.UniformType.Vec4, 4);
+            m_sisCSM = bgfx.create_uniform("u_csm_texsis", bgfx.UniformType.Vec4, 1);
+            m_dirCSM = bgfx.create_uniform("u_csm_light_dir", bgfx.UniformType.Vec4, 1);
+            m_colorCSM = bgfx.create_uniform("u_csm_light_color", bgfx.UniformType.Vec4, 1);
+            m_matrixCSM = bgfx.create_uniform("u_wl_csm", bgfx.UniformType.Mat4, 1);
+
+
             Assert.IsTrue(LightingBGFX.maxPointOrDirLights == 8); // must match array size in shader
             m_simplelightPosOrDir = bgfx.create_uniform("u_simplelight_posordir", bgfx.UniformType.Vec4, 8);
             m_simplelightColorIVR = bgfx.create_uniform("u_simplelight_color_ivr", bgfx.UniformType.Vec4, 8);
@@ -192,12 +205,11 @@ namespace Unity.Tiny.Rendering
         public void Destroy()
         {
             bgfx.destroy_program(m_prog);
-            bgfx.destroy_uniform(m_samplerAlbedo);
+            bgfx.destroy_uniform(m_samplerAlbedoOpacity);
             bgfx.destroy_uniform(m_samplerMetal);
             bgfx.destroy_uniform(m_samplerSmoothness);
             bgfx.destroy_uniform(m_samplerEmissive);
             bgfx.destroy_uniform(m_samplerNormal);
-            bgfx.destroy_uniform(m_samplerOpacity);
 
             bgfx.destroy_uniform(m_uniformAlbedoOpacity);
             bgfx.destroy_uniform(m_uniformMetalSmoothness);
@@ -217,6 +229,13 @@ namespace Unity.Tiny.Rendering
 
             bgfx.destroy_uniform(m_simplelightPosOrDir);
             bgfx.destroy_uniform(m_simplelightColorIVR);
+
+            bgfx.destroy_uniform(m_samplerShadowCSM);
+            bgfx.destroy_uniform(m_offsetScaleCSM);
+            bgfx.destroy_uniform(m_sisCSM);
+            bgfx.destroy_uniform(m_dirCSM);
+            bgfx.destroy_uniform(m_colorCSM);
+            bgfx.destroy_uniform(m_matrixCSM);
         }
     }
 
@@ -338,17 +357,20 @@ namespace Unity.Tiny.Rendering
         public bgfx.ProgramHandle m_prog;
 
         public bgfx.UniformHandle m_uniformBias;
+        public bgfx.UniformHandle m_uniformDebugColor;
 
         public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
         {
             m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "shadowmap");
             m_uniformBias = bgfx.create_uniform("u_bias", bgfx.UniformType.Vec4, 1);
+            m_uniformDebugColor = bgfx.create_uniform("u_colorDebug", bgfx.UniformType.Vec4, 1);
         }
 
         public void Destroy()
         {
             bgfx.destroy_program(m_prog);
             bgfx.destroy_uniform(m_uniformBias);
+            bgfx.destroy_uniform(m_uniformDebugColor);
         }
     }
 }

@@ -19,8 +19,7 @@ namespace Unity.Tiny.Rendering
 
     public struct SimpleMaterialBGFX : ISystemStateComponentData
     {
-        public bgfx.TextureHandle texAlbedo;
-        public bgfx.TextureHandle texOpacity;
+        public bgfx.TextureHandle texAlbedoOpacity;
 
         public float4 constAlbedo_Opacity;
         public float4 mainTextureScaleTranslate;//scale: xy translate: zw
@@ -30,12 +29,11 @@ namespace Unity.Tiny.Rendering
 
     public struct LitMaterialBGFX : ISystemStateComponentData
     {
-        public bgfx.TextureHandle texAlbedo;
+        public bgfx.TextureHandle texAlbedoOpacity;
         public bgfx.TextureHandle texMetal;
         public bgfx.TextureHandle texNormal;
         public bgfx.TextureHandle texSmoothness;
         public bgfx.TextureHandle texEmissive;
-        public bgfx.TextureHandle texOpacity;
 
         public float4 constAlbedo_Opacity; 
         public float4 constMetal_Smoothness; // zw unused 
@@ -73,12 +71,11 @@ namespace Unity.Tiny.Rendering
 
         public bool UpdateLitMaterialBGFX(RendererBGFXSystem sys, ref LitMaterial mat, ref LitMaterialBGFX matBGFX) {
             bool stillLoading = false;
-            if (InitTexture(ref matBGFX.texAlbedo, mat.texAlbedo, sys.WhiteTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texOpacity, mat.texOpacity, sys.WhiteTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texNormal, mat.texNormal, sys.UpTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texMetal, mat.texMetal, sys.BlackTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texEmissive, mat.texEmissive, sys.BlackTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texSmoothness, mat.texSmoothness, sys.GreyTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texAlbedoOpacity, mat.texAlbedoOpacity, sys.m_whiteTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texNormal, mat.texNormal, sys.m_upTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texMetal, mat.texMetal, sys.m_blackTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texEmissive, mat.texEmissive, sys.m_blackTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texSmoothness, mat.texSmoothness, sys.m_greyTexture)) stillLoading = true;
 
             matBGFX.constAlbedo_Opacity = new float4(mat.constAlbedo, mat.constOpacity);
             matBGFX.constMetal_Smoothness = new float4(mat.constMetal, mat.constSmoothness, 0, 0);
@@ -109,8 +106,7 @@ namespace Unity.Tiny.Rendering
             // if texture entity OR load state changed need to update texture handles 
             // content of texture change should transparently update texture referenced by handle
             bool stillLoading = false;
-            if (InitTexture(ref matBGFX.texAlbedo, mat.texAlbedo, sys.WhiteTexture)) stillLoading = true;
-            if (InitTexture(ref matBGFX.texOpacity, mat.texOpacity, sys.WhiteTexture)) stillLoading = true;
+            if (InitTexture(ref matBGFX.texAlbedoOpacity, mat.texAlbedoOpacity, sys.m_whiteTexture)) stillLoading = true;
 
             // if twoSided or hasalpha changed, need to update state
             matBGFX.state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | bgfx.StateFlags.DepthTestLess);

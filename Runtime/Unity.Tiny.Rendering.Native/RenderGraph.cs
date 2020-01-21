@@ -75,8 +75,20 @@ namespace Unity.Tiny.Rendering
 
     public struct RenderPassUpdateFromLight : IComponentData
     {
-        // frustum and transforms will auto update from a camera entity 
+        // frustum and transforms will auto update from a light entity 
         public Entity light; // must have Light component
+    }
+
+    public struct RenderPassUpdateFromCascade : IComponentData
+    {
+        // frustum and transforms will auto update from a camera entity 
+        public Entity light; // must have Light and CascadeShadowmappedLight component
+        public int cascade;
+    }
+
+    public struct RenderPassCascade : IComponentData
+    {
+        public int cascade;
     }
 
     public struct RenderPassAutoSizeToNode : IComponentData
@@ -110,7 +122,8 @@ namespace Unity.Tiny.Rendering
         UI = 8,
         FullscreenQuad = 16,
         ShadowMap = 32,
-        Sprites = 64
+        Sprites = 64,
+        DebugOverlay = 128
     }
 
     public struct RenderPassRect 
@@ -133,7 +146,7 @@ namespace Unity.Tiny.Rendering
         public uint clearRGBA; // matches bgfx
         public float clearDepth; // matches bgfx
         public byte clearStencil; // matches bgfx
-        // next to it, optional, Frustum for late stage culling
+        public Frustum frustum; // Frustum for late stage culling
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
@@ -170,7 +183,7 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate() {
             var bgfxsys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!bgfxsys.Initialized)
+            if (!bgfxsys.m_initialized)
                 return;
 
             // make sure passes have viewid, transform, scissor rect and view rect set 
@@ -210,33 +223,27 @@ namespace Unity.Tiny.Rendering
                 CameraMatrices camData = EntityManager.GetComponentData<CameraMatrices>(eCam);
                 pass.viewTransform = camData.view;
                 pass.projectionTransform = camData.projection;
-                if (EntityManager.HasComponent<Frustum>(eCam)) {
-                    if (EntityManager.HasComponent<Frustum>(e)) {
-                        EntityManager.SetComponentData(e, EntityManager.GetComponentData<Frustum>(eCam));
-                    }
-                } else {
-                    if (EntityManager.HasComponent<Frustum>(e)) {
-                        EntityManager.SetComponentData(e, new Frustum());
-                    }
-                }
+                pass.frustum = camData.frustum;
             });
 
-            // auto update passes that are matched with a light 
+            // auto update passes that are matched with a cascade
+            Entities.ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromCascade fromCascade) => {
+                Entity eLight = fromCascade.light;
+                CascadeShadowmappedLightCache csmData = EntityManager.GetComponentData<CascadeShadowmappedLightCache>(eLight);
+                CascadeData cs = csmData.GetCascadeData(fromCascade.cascade);
+                pass.viewTransform = cs.view;
+                pass.projectionTransform = cs.proj;
+                pass.frustum = cs.frustum;
+            });
+
+            // auto update passes that are matched with a light
             Entities.ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromLight fromLight) =>
             {
                 Entity eLight = fromLight.light;
                 LightMatrices lightData = EntityManager.GetComponentData<LightMatrices>(eLight);
                 pass.viewTransform = lightData.view;
                 pass.projectionTransform = lightData.projection;
-                if (EntityManager.HasComponent<Frustum>(eLight)) {
-                    if (EntityManager.HasComponent<Frustum>(e)) {
-                        EntityManager.SetComponentData(e, EntityManager.GetComponentData<Frustum>(eLight));
-                    }
-                } else {
-                    if (EntityManager.HasComponent<Frustum>(e)) {
-                        EntityManager.SetComponentData(e, new Frustum());
-                    }
-                }
+                pass.frustum = lightData.frustum;
             });
 
             // set up extra pass data 

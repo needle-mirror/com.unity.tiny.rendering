@@ -7,12 +7,21 @@ using Unity.Tiny.Rendering;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine.Assertions;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectDeclareReferencedObjectsGroup))]
     class MeshRendererDeclareAssets : GameObjectConversionSystem
     {
+        public override bool ShouldRunConversionSystem()
+        {
+            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
+            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+                return false;
+            return base.ShouldRunConversionSystem();
+        }
+
         protected override void OnUpdate() =>
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
             {
@@ -34,6 +43,14 @@ namespace Unity.TinyConversion
     [UpdateAfter(typeof(MeshRendererConversion))]
     public class AddMeshRenderDataSystem : GameObjectConversionSystem
     {
+        public override bool ShouldRunConversionSystem()
+        {
+            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
+            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+                return false;
+            return base.ShouldRunConversionSystem();
+        }
+
         protected override void OnUpdate()
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
@@ -59,6 +76,14 @@ namespace Unity.TinyConversion
     [UpdateAfter(typeof(MaterialConversion))]
     public class MeshRendererConversion : GameObjectConversionSystem
     {
+        public override bool ShouldRunConversionSystem()
+        {
+            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
+            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+                return false;
+            return base.ShouldRunConversionSystem();
+        }
+
         protected override void OnUpdate()
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>

@@ -69,9 +69,9 @@ namespace Unity.Tiny.Rendering
 
     public class KeyControlsSystem : ComponentSystem
     {
-        protected float2 m_prevMouse;
         protected int m_nshots;
         public bool m_configAlwaysRun;
+        public bool m_notFirst; 
 
 #if !UNITY_EDITOR
         protected void ControlCamera(Entity ecam)
@@ -82,8 +82,12 @@ namespace Unity.Tiny.Rendering
             var env = World.TinyEnvironment();
             var di = env.GetConfigData<DisplayInfo>();
             float2 inpos = input.GetInputPosition();
-            float2 deltaMouse = (inpos - m_prevMouse) / new float2(di.width, di.height);
-            m_prevMouse = inpos;
+            float2 deltaMouse = input.GetInputDelta() / new float2(di.width, di.height);
+
+            if ( !m_notFirst ) {
+                m_notFirst = true;
+                return;
+            }
 
             bool mb0 = input.GetMouseButton(0);
             bool mb1 = input.GetMouseButton(1);
@@ -192,15 +196,31 @@ namespace Unity.Tiny.Rendering
             if (input.GetKey(KeyCode.F2))
                 renderer.SetFlagThisFrame(bgfx.DebugFlags.Stats);
 
-            renderer.OutputDebugSelect = new float4(0, 0, 0, 0);
+            if (input.GetKeyDown(KeyCode.F3)) {
+                var di = env.GetConfigData<DisplayInfo>();
+                di.disableSRGB = !di.disableSRGB;
+                env.SetConfigData(di);
+                renderer.DestroyAllTextures();
+                renderer.ReloadAllImages();
+                Debug.LogFormatAlways("SRGB is now {0}.", di.disableSRGB?"disabled":"enabled" );
+            }
+
+            if (input.GetKeyDown(KeyCode.F4)) {
+                var di = env.GetConfigData<DisplayInfo>();
+                di.disableVSync = !di.disableVSync;
+                env.SetConfigData(di);
+                Debug.LogFormatAlways("VSync is now {0}.", di.disableVSync?"disabled":"enabled" );
+            }
+
+            renderer.m_outputDebugSelect = new float4(0, 0, 0, 0);
             if (input.GetKey(KeyCode.Alpha1))
-                renderer.OutputDebugSelect = new float4(1, 0, 0, 0);
+                renderer.m_outputDebugSelect = new float4(1, 0, 0, 0);
             if (input.GetKey(KeyCode.Alpha2))
-                renderer.OutputDebugSelect = new float4(0, 1, 0, 0);
+                renderer.m_outputDebugSelect = new float4(0, 1, 0, 0);
             if (input.GetKey(KeyCode.Alpha3))
-                renderer.OutputDebugSelect = new float4(0, 0, 1, 0);
+                renderer.m_outputDebugSelect = new float4(0, 0, 1, 0);
             if (input.GetKey(KeyCode.Alpha4))
-                renderer.OutputDebugSelect = new float4(0, 0, 0, 1);
+                renderer.m_outputDebugSelect = new float4(0, 0, 0, 1);
             if (input.GetKeyDown(KeyCode.Z))
             {
                 string fn = StringFormatter.Format("screenshot{0}.tga", m_nshots++);
@@ -220,7 +240,7 @@ namespace Unity.Tiny.Rendering
             {
                 // TODO: save out 32bpp pixel data:
                 Debug.LogFormat("Write screen shot to disk: {0}, {1}*{2}",
-                    renderer.ScreenShotPath, renderer.ScreenShotWidth, renderer.ScreenShotHeight);
+                    renderer.m_screenShotPath, renderer.m_screenShotWidth, renderer.m_screenShotHeight);
                 renderer.ResetScreenShot();
             }
 
