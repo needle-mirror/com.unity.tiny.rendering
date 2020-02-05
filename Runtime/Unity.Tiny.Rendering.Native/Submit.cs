@@ -171,6 +171,9 @@ namespace Unity.Tiny.Rendering
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
                     return;
 
+                if (!EntityManager.HasComponent<TextureBGFX>(br.texture))
+                    return;
+
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 var tex = EntityManager.GetComponentData<TextureBGFX>(br.texture);

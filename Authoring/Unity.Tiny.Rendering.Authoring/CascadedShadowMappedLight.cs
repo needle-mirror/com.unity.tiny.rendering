@@ -3,6 +3,7 @@ using UnityEngine;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Tiny.Rendering;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.Tiny.Authoring
 {
@@ -14,6 +15,9 @@ namespace Unity.Tiny.Authoring
 
         public void Convert(Entity entity, EntityManager dstManager, GameObjectConversionSystem conversionSystem)
         {
+            if (!conversionSystem.TryGetBuildSettingsComponent<DotsRuntimeBuildProfile>(out _))
+                return;
+
             if (mainCamera == null)
                 throw new ArgumentException($"No camera found in the CascadedShadowMappedLight authoring component of the gameobject: {name}. Please assign one for cascade shadow mapping.");
 

@@ -205,8 +205,8 @@ namespace Unity.Tiny.Rendering
                     var di = World.TinyEnvironment().GetConfigData<DisplayInfo>();
                     pass.viewport.x = 0;
                     pass.viewport.y = 0;
-                    pass.viewport.w = (ushort)di.width;
-                    pass.viewport.h = (ushort)di.height;
+                    pass.viewport.w = (ushort)di.framebufferWidth;
+                    pass.viewport.h = (ushort)di.framebufferHeight;
                     return;
                 } 
                 if (EntityManager.HasComponent<RenderNodeTexture>(pass.inNode)) {

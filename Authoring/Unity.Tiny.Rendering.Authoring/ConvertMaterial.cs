@@ -4,6 +4,7 @@ using Unity.Tiny.Rendering;
 using Unity.Mathematics;
 using UnityEngine;
 using Unity.Entities.Runtime.Build;
+using UnityEditor;
 
 namespace Unity.TinyConversion
 {
@@ -63,11 +64,12 @@ namespace Unity.TinyConversion
             //Do the conversion
             Vector2 textScale = uMaterial.GetTextureScale("_BaseMap");
             Vector2 textTrans = uMaterial.GetTextureOffset("_BaseMap");
+            UnityEngine.Color baseColor = uMaterial.GetColor("_BaseColor").linear;
             DstEntityManager.AddComponentData<SimpleMaterial>(entity, new SimpleMaterial()
             {
                 texAlbedoOpacity = GetTextureEntity(uMaterial, "_MainTex"),
-                constAlbedo = new float3(uMaterial.GetColor("_BaseColor").r, uMaterial.GetColor("_BaseColor").g, uMaterial.GetColor("_BaseColor").b),
-                constOpacity = uMaterial.GetColor("_BaseColor").a,
+                constAlbedo = new float3(baseColor.r, baseColor.g, baseColor.b),
+                constOpacity = baseColor.a,
                 blend = GetBlending(uMaterial.GetFloat("_Blend")),
                 twoSided = IsTwoSided(uMaterial),
                 transparent = uMaterial.GetInt("_Surface") == 1,
@@ -96,13 +98,17 @@ namespace Unity.TinyConversion
             //Check if _Emission shader keyword has been enabled for that material
             float3 emissionColor = new float3(0.0f);
             if (uMaterial.IsKeywordEnabled("_EMISSION"))
-                emissionColor = new float3(uMaterial.GetColor("_EmissionColor").r, uMaterial.GetColor("_EmissionColor").g, uMaterial.GetColor("_EmissionColor").b);
+            {
+                UnityEngine.Color uEmissionColor = uMaterial.GetColor("_EmissionColor").linear;
+                emissionColor = new float3(uEmissionColor.r, uEmissionColor.g, uEmissionColor.b);
+            }
 
+            UnityEngine.Color baseColor = uMaterial.GetColor("_BaseColor").linear;
             DstEntityManager.AddComponentData<LitMaterial>(entity, new LitMaterial()
             {
                 texAlbedoOpacity = texAlbedo,
-                constAlbedo = new float3(uMaterial.GetColor("_BaseColor").r, uMaterial.GetColor("_BaseColor").g, uMaterial.GetColor("_BaseColor").b),
-                constOpacity = uMaterial.GetColor("_BaseColor").a,
+                constAlbedo = new float3(baseColor.r, baseColor.g, baseColor.b),
+                constOpacity = baseColor.a,
                 constEmissive = emissionColor,
                 texMetal = texMetal,
                 texSmoothness = uMaterial.GetFloat("_Smoothness") > 0.0f ? texAlbedo : texMetal,

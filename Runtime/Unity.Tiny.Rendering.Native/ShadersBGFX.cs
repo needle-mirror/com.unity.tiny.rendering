@@ -52,11 +52,24 @@ namespace Unity.Tiny.Rendering
         public static bgfx.TextureHandle MakeNoShadowTexture(bgfx.RendererType backend, ushort value)
         {
             bgfx.TextureHandle ret;
-            unsafe {
+            unsafe
+            {
                 if (backend == bgfx.RendererType.OpenGLES)
+                {
                     ret = MakeUnitTexture(0xffffffff);
+                }
                 else
-                    ret = bgfx.create_texture_2d(1, 1, false, 1, bgfx.TextureFormat.D16, (ulong)bgfx.SamplerFlags.UClamp | (ulong)bgfx.SamplerFlags.VClamp | (ulong)bgfx.SamplerFlags.CompareLess, CreateMemoryBlock((byte*)&value, 2));
+                {
+                    bgfx.Memory* mem = (bgfx.Memory*)0;
+    #if !UNITY_MACOSX
+                    // on Metal desktop we can't initialize depth textures, everywhere else we can
+                    // TODO this is a temporary hack to avoid us failing Metal validation
+                    mem = CreateMemoryBlock((byte*)&value, 2);
+    #endif
+                    ret = bgfx.create_texture_2d(1, 1, false, 1, bgfx.TextureFormat.D16,
+                        (ulong) bgfx.SamplerFlags.UClamp | (ulong) bgfx.SamplerFlags.VClamp |
+                        (ulong) bgfx.SamplerFlags.CompareLess, mem);
+                }
             }
             return ret;
         }

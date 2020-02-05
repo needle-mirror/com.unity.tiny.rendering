@@ -148,15 +148,20 @@ public class BgfxBuild
             RTTI = { false },
             IncludeDirectories = {
                 bimg.Combine("include"),
-                bimg.Combine("3rdparty/astc-codec"),
                 bimg.Combine("3rdparty/astc-codec/include"),
+                // comment out next line once BIMG_DECODE_ASTC lands in bimg
+                bimg.Combine("3rdparty/astc-codec"),
             },
             Sources = {
                 bimg.Combine("src/image.cpp"),
                 bimg.Combine("src/image_gnf.cpp"),
+                // comment out next line once BIMG_DECODE_ASTC lands in bimg
                 bimg.Combine("3rdparty/astc-codec/src/decoder").CombineMany(new [] {"astc_file.cc","codec.cc","endpoint_codec.cc","footprint.cc","integer_sequence_codec.cc","intermediate_astc_block.cc","logical_astc_block.cc","partition.cc","physical_astc_block.cc","quantization.cc","weight_infill.cc"})
             },
-            Defines = { "__STDC_FORMAT_MACROS" },
+            Defines = {
+                "__STDC_FORMAT_MACROS",
+                "BIMG_DECODE_ENABLE=0"
+            },
         };
         BimgLib.CompilerSettings().Add(c => c.WithCppLanguageVersion(CppLanguageVersion.Cpp14));
         BimgLib.CompilerSettingsForMac().Add(c => c.WithObjcArc(false));

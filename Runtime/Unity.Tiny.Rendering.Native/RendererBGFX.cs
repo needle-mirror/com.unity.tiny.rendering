@@ -18,6 +18,9 @@ using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Burst;
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
+#if UNITY_MACOSX
+using Unity.Tiny.GLFW;
+#endif
 
 [assembly: InternalsVisibleTo("Unity.Tiny.RendererExtras")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.Tests")]
@@ -311,23 +314,50 @@ namespace Unity.Tiny.Rendering
 
             var env = World.TinyEnvironment();
             var di = env.GetConfigData<DisplayInfo>();
-#if RENDERING_FORCE_SRGB_DISABLED
-            if ( !di.disableSRGB ) {
-                di.disableSRGB = true;
-                env.SetConfigData<DisplayInfo>(di);
-                RenderDebug.Log("SRGB is disabled via a scripting define, overriding the DisplayInfo value");
-            }
-#endif
-#if RENDERING_FORCE_SRGB_ENABLED
-            if ( di.disableSRGB ) {
-                di.disableSRGB = false;
-                env.SetConfigData<DisplayInfo>(di);
-                RenderDebug.Log("SRGB is enabled via a scripting define, overriding the DisplayInfo value");
-            }
-#endif
-            var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
 
             m_screenShot = new NativeList<byte>(Allocator.Persistent);
+
+            m_platformData = new bgfx.PlatformData();
+            m_platformData.nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle().ToPointer();
+
+            var rendererType = bgfx.RendererType.Count; // Auto
+#if RENDERING_FORCE_OPENGL
+            rendererType = bgfx.RendererType.OpenGL;
+#endif
+
+#if UNITY_MACOSX
+            // Mac takes a different path -- we need to create the actual CAMetalLayer
+            // or NSOpenGLView + Context on the main thread instead of letting bgfx do it.
+            if (rendererType == bgfx.RendererType.Metal || rendererType == bgfx.RendererType.Count)
+            {
+                var glfw = (GLFWWindowSystem) World.GetExistingSystem<WindowSystem>();
+                var layer = glfw.GetMacMetalLayerHandle();
+                if (layer != IntPtr.Zero)
+                {
+                    m_platformData.nwh = layer.ToPointer();
+                    rendererType = bgfx.RendererType.Metal;
+                }
+                else if (rendererType == bgfx.RendererType.Count)
+                {
+                    rendererType = bgfx.RendererType.OpenGL;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Failed to create CAMetalLayer and Metal is forced");
+                }
+            }
+
+            if (rendererType == bgfx.RendererType.OpenGL)
+            {
+                // force OpenGL, which on Mac also means forcing single threaded mode because the underlying
+                // lib wants to do too many things from the render thread
+                rendererType = bgfx.RendererType.OpenGL;
+                bgfx.render_frame(0);
+            }
+#endif
+
+            // Must be called before bgfx::init
+            bgfx.set_platform_data((bgfx.PlatformData*) UnsafeUtility.AddressOf(ref m_platformData));
 
             bgfx.Init init = new bgfx.Init();
             init.callback = bgfx.CallbacksInit();
@@ -336,12 +366,7 @@ namespace Unity.Tiny.Rendering
 #else
             init.debug = 0;
 #endif
-            m_platformData = new bgfx.PlatformData { nwh = nwh.ToPointer() };
 
-            // Must be called before bgfx::init
-            fixed (bgfx.PlatformData* platformData = &m_platformData) {
-                bgfx.set_platform_data(platformData);
-            }
             init.platformData = m_platformData;
             init.resolution.width = (uint)di.framebufferWidth;
             init.resolution.height = (uint)di.framebufferHeight;
@@ -365,10 +390,7 @@ namespace Unity.Tiny.Rendering
             init.limits.transientVbSize = 6 << 20; // BGFX_CONFIG_TRANSIENT_VERTEX_BUFFER_SIZE;
             init.limits.transientIbSize = 1 << 20; // BGFX_CONFIG_TRANSIENT_INDEX_BUFFER_SIZE;
 
-            init.type = bgfx.RendererType.Count;
-#if RENDERING_FORCE_OPENGL
-            init.type = bgfx.RendererType.OpenGL;
-#endif
+            init.type = rendererType;
 
             m_fbHeight = di.framebufferHeight;
             m_fbWidth = di.framebufferWidth;
@@ -627,7 +649,7 @@ namespace Unity.Tiny.Rendering
             var env = World.TinyEnvironment();
             var di = env.GetConfigData<DisplayInfo>();
             var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle().ToPointer();
-            bool needReset = di.width != m_fbWidth || di.height != m_fbHeight || di.disableVSync != m_disableVSync || di.disableSRGB != m_disableSRGB;
+            bool needReset = di.framebufferWidth != m_fbWidth || di.framebufferHeight != m_fbHeight || di.disableVSync != m_disableVSync || di.disableSRGB != m_disableSRGB;
             if (m_platformData.nwh != nwh) {
                 m_platformData.nwh = nwh;
                 fixed (bgfx.PlatformData* platformData = &m_platformData) {
@@ -637,9 +659,9 @@ namespace Unity.Tiny.Rendering
                 RenderDebug.LogFormatAlways("BGFX native window handler updated");
             }
             if (needReset) {
-                bgfx.reset((uint)di.width, (uint)di.height, GetResetFlags(ref di), bgfx.TextureFormat.RGBA8);
-                m_fbWidth = di.width;
-                m_fbHeight = di.height;
+                bgfx.reset((uint)di.framebufferWidth, (uint)di.framebufferHeight, GetResetFlags(ref di), bgfx.TextureFormat.RGBA8);
+                m_fbWidth = di.framebufferWidth;
+                m_fbHeight = di.framebufferHeight;
                 m_disableVSync = di.disableVSync;
                 m_disableSRGB = di.disableSRGB;
                 UpdateSRGBState(bgfx.get_renderer_type());

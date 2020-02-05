@@ -80,7 +80,7 @@ namespace Unity.TinyConversion
 
         protected override void OnUpdate()
         {
-            if (profile == null)
+            if (buildSettings == null || !buildSettings.TryGetComponent<DotsRuntimeBuildProfile>(out var profile))
                 return;
 
             //Export shaders per build target
