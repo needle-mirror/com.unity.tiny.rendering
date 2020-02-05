@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 * `TinyDisplayInfo` is now exported via a configuration system
 * Add custom inspectors for new light components
 * Fix srgb color conversion to better match the editor scene view
+* Runtime colorspace and sRGB usage will match Project Player colorspace settings
 
 ## [0.21.0] - 2020-01-21
 

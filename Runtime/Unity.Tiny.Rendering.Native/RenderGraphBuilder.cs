@@ -143,6 +143,9 @@ namespace Unity.Tiny.Rendering
             CameraMask cameraMask = new CameraMask { mask = ulong.MaxValue };
             if (EntityManager.HasComponent<CameraMask>(eCam))
                 cameraMask = EntityManager.GetComponentData<CameraMask>(eCam);
+            
+            var env = World.TinyEnvironment();
+            var di = env.GetConfigData<DisplayInfo>();
 
             Entity ePassOpaque = EntityManager.CreateEntity();
             EntityManager.AddComponentData(ePassOpaque, new RenderPass
@@ -156,7 +159,7 @@ namespace Unity.Tiny.Rendering
                 scissor = new RenderPassRect(),
                 viewport = new RenderPassRect { x = 0, y = 0, w = (ushort)w, h = (ushort)h },
                 clearFlags = RenderPassClear.Depth | (cam.clearFlags == CameraClearFlags.SolidColor ? RenderPassClear.Color : 0),
-                clearRGBA = RendererBGFXSystem.PackColorBGFX(cam.backgroundColor),
+                clearRGBA = RendererBGFXSystem.PackColorBGFX(di.disableSRGB ? cam.backgroundColor.AsFloat4() : cam.backgroundColor.ToLinear()),
                 clearDepth = 1.0f,
                 clearStencil = 0
             });

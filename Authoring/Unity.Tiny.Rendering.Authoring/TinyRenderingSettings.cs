@@ -1,4 +1,5 @@
 ﻿using Unity.Build;
+using UnityEngine;
 using PropertyAttribute = Unity.Properties.PropertyAttribute;
 
 namespace Unity.Tiny.Rendering.Settings
@@ -19,6 +20,7 @@ namespace Unity.Tiny.Rendering.Settings
         public bool DisableVsync = false;
 
         [Property]
+        [HideInInspector]
         public bool DisableSRGB = false;
     }
 }

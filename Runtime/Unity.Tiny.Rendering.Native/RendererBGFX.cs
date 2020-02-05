@@ -142,10 +142,13 @@ namespace Unity.Tiny.Rendering
 
         void UpdateSRGBState (bgfx.RendererType backend)
         {
-            if (!m_disableSRGB) {
+            if (!m_disableSRGB) // Linear color space
+            {
                 m_allowSRGBTextures = true;
                 m_blitPrimarySRGB = backend==bgfx.RendererType.OpenGLES;
-            } else {
+            } 
+            else // Gamma color space
+            {
                 RenderDebug.LogAlways("SRGB sampling and writing is disabled via DisplayInfo setting.");
                 m_allowSRGBTextures = false;
                 m_blitPrimarySRGB = false;
@@ -623,8 +626,8 @@ namespace Unity.Tiny.Rendering
         static private uint GetResetFlags(ref DisplayInfo di)
         {
             uint flags = 0;
-            if (!di.disableSRGB)
-                flags |= (uint)bgfx.ResetFlags.SrgbBackbuffer;
+            if (!di.disableSRGB) // In linear color space
+                flags |= (uint)bgfx.ResetFlags.SrgbBackbuffer; // Ask driver for gamma correction
             if (!di.disableVSync)
                 flags |= (uint)bgfx.ResetFlags.Vsync;
             return flags;
@@ -820,8 +823,8 @@ namespace Unity.Tiny.Rendering
                 samplerFlags |= (ulong)bgfx.SamplerFlags.VMirror;
             if ((im2d.flags & TextureFlags.Point) == TextureFlags.Point)
                 samplerFlags |= (ulong)bgfx.SamplerFlags.Point;
-            if (m_allowSRGBTextures && (im2d.flags & TextureFlags.Srgb) == TextureFlags.Srgb)
-                samplerFlags |= (ulong)bgfx.TextureFlags.Srgb;
+            if (m_allowSRGBTextures && (im2d.flags & TextureFlags.Srgb) == TextureFlags.Srgb) // In linear color space w. gamma textures
+                samplerFlags |= (ulong)bgfx.TextureFlags.Srgb; // This will cause gamma correction
             if ((im2d.flags & TextureFlags.MimapEnabled) == TextureFlags.MimapEnabled &&
                 (im2d.flags & TextureFlags.Linear) == TextureFlags.Linear)
                 samplerFlags |= (ulong)bgfx.SamplerFlags.MipPoint;
@@ -1020,11 +1023,6 @@ namespace Unity.Tiny.Rendering
             if (x < iMin) return iMin;
             if (x > iMax) return iMax;
             return x;
-        }
-
-        static public uint PackColorBGFX(Color c)
-        {
-            return PackColorBGFX(c.ToLinear());
         }
 
         static public uint PackColorBGFX(float4 c)
