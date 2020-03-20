@@ -7,10 +7,12 @@ using UnityEngine.Rendering;
 using Debug = UnityEngine.Debug;
 using Light = UnityEngine.Light;
 using Unity.Entities.Runtime.Build;
+using Unity.Transforms;
 
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectBeforeConversionGroup))]
+    [UpdateAfter(typeof(TransformConversion))]
     public class LightConversion : GameObjectConversionSystem
     {
         void CheckLightLimitations()
@@ -53,7 +55,7 @@ namespace Unity.TinyConversion
         public override bool ShouldRunConversionSystem()
         {
             //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
                 return false;
             return base.ShouldRunConversionSystem();
         }
@@ -121,6 +123,9 @@ namespace Unity.TinyConversion
                     light.clipZNear = uLight.shadowNearPlane;
                     DstEntityManager.SetComponentData(eLighting, light);
                 }
+                
+                if (DstEntityManager.HasComponent<NonUniformScale>(eLighting))
+                    DstEntityManager.SetComponentData(eLighting, new NonUniformScale(){Value = new float3(1f)});
             });
         }
     }

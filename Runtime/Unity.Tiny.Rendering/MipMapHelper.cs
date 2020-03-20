@@ -89,38 +89,6 @@ namespace Unity.Tiny.Rendering
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float LinearToSRGB(float x)
-        {
-            if (x <= 0.0031308f) return x * 12.92f;
-            return math.pow(x, 1.0f / 2.4f) * 1.055f - 0.055f;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float3 LinearToSRGB(float3 rgb)
-        {
-            return new float3 (
-                LinearToSRGB(rgb.x),
-                LinearToSRGB(rgb.y),
-                LinearToSRGB(rgb.z) );
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float SRGBToLinear(float x)
-        {
-            if (x < 0.04045f) return x * (1.0f / 12.92f);
-            return math.pow((x + 0.055f) / 1.055f, 2.4f);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float3 SRGBToLinear(float3 rgb)
-        {
-            return new float3(
-                SRGBToLinear(rgb.x),
-                SRGBToLinear(rgb.y),
-                SRGBToLinear(rgb.z));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static byte LinearToSRGB_Table(float x)
         {
             Assert.IsTrue(x>=0.0f && x<=1.0f);
@@ -140,7 +108,7 @@ namespace Unity.Tiny.Rendering
             LinearToSRGBTable = new NativeArray<byte>(LinearToSRGBTableSize, Allocator.Persistent);
             for (int i = 0; i < LinearToSRGBTableSize ; i++) {
                 float f = (float)i / (float)(LinearToSRGBTableSize-1);
-                float y = LinearToSRGB(f) + .5f / 255.0f;
+                float y = Color.LinearToSRGB(f) + .5f / 255.0f;
                 if (y < 0.0f) y = 0.0f;
                 if (y > 1.0f) y = 1.0f;
                 LinearToSRGBTable[i] = (byte)(y * 255.0f);
@@ -153,7 +121,7 @@ namespace Unity.Tiny.Rendering
                 return;
             SRGBToLinearTable = new NativeArray<float>(256, Allocator.Persistent);
             for (int i = 0; i < 256; i++) {
-                float y = SRGBToLinear((float)i / (float)255);
+                float y = Color.SRGBToLinear((float)i / (float)255);
                 if (y > 1.0f) y = 1.0f;
                 SRGBToLinearTable[i] = y;
             }

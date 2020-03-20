@@ -21,7 +21,7 @@ namespace Unity.Tiny.Rendering
         public quaternion spin;
     };
 
-    public class DemoSpinnerSystem : ComponentSystem
+    public class DemoSpinnerSystem : SystemBase
     {
         protected bool m_paused;
         protected override void OnUpdate()
@@ -39,7 +39,7 @@ namespace Unity.Tiny.Rendering
                     quaternion sp = s.spin;
                     sp.value.xyz *= dt;
                     r.Value = math.normalize(math.mul(r.Value, sp));
-                });
+                }).Run();
             }
         }
     }
@@ -67,7 +67,7 @@ namespace Unity.Tiny.Rendering
         public KeyCode key;
     }
 
-    public class KeyControlsSystem : ComponentSystem
+    public class KeyControlsSystem : SystemBase
     {
         protected int m_nshots;
         public bool m_configAlwaysRun;
@@ -168,59 +168,67 @@ namespace Unity.Tiny.Rendering
                     bestdepth = cam.depth;
                     ecam = e;
                 }
-            });
+            }).Run();
             if ( ecam==Entity.Null ) {
-                Entities.WithAll<Translation, Rotation, Camera>().ForEach((Entity e, ref Camera cam) =>
+                Entities.WithAll<Translation, Rotation>().ForEach((Entity e, ref Camera cam) =>
                 {
                     if (ecam == Entity.Null || cam.depth > bestdepth) {
                         bestdepth = cam.depth;
                         ecam = e;
                     }
-                });
+                }).Run();
             }
             return ecam;
         }
 #endif
 
-        protected override void OnUpdate()
+
+
+        protected unsafe override void OnUpdate()
         {
 #if !UNITY_EDITOR
             var env = World.TinyEnvironment();
             var input = World.GetExistingSystem<InputSystem>();
             var renderer = World.GetExistingSystem<RendererBGFXSystem>();
+            var rendererInstance = renderer.InstancePointer();
 
-            if (!m_configAlwaysRun && !input.GetKey(KeyCode.LeftShift))
+            bool anyShift = input.GetKey(KeyCode.LeftShift) || input.GetKey(KeyCode.RightShift);
+            bool anyCtrl = input.GetKey(KeyCode.LeftControl) || input.GetKey(KeyCode.RightControl);
+            bool anyAlt = input.GetKey(KeyCode.LeftAlt) || input.GetKey(KeyCode.RightAlt);
+
+            if (!m_configAlwaysRun && !anyShift)
                 return;
 
             // debug bgfx stuff
-            if (input.GetKey(KeyCode.F2))
-                renderer.SetFlagThisFrame(bgfx.DebugFlags.Stats);
+            if (input.GetKey(KeyCode.F2) || (input.GetKey(KeyCode.Alpha2) && anyAlt))
+                rendererInstance->SetFlagThisFrame(bgfx.DebugFlags.Stats);
 
-            if (input.GetKeyDown(KeyCode.F3)) {
+            if (input.GetKeyDown(KeyCode.F3) || (input.GetKeyDown(KeyCode.Alpha3) && anyAlt)) {
                 var di = env.GetConfigData<DisplayInfo>();
-                di.disableSRGB = !di.disableSRGB;
+                if ( di.colorSpace==ColorSpace.Gamma ) di.colorSpace = ColorSpace.Linear;
+                else di.colorSpace=ColorSpace.Gamma;
                 env.SetConfigData(di);
                 renderer.DestroyAllTextures();
                 renderer.ReloadAllImages();
-                Debug.LogFormatAlways("SRGB is now {0}.", di.disableSRGB?"disabled":"enabled" );
+                Debug.LogFormatAlways("Color space is now {0}.", di.colorSpace==ColorSpace.Gamma?"Gamma (no srgb sampling)":"Linear" );
             }
 
-            if (input.GetKeyDown(KeyCode.F4)) {
+            if (input.GetKeyDown(KeyCode.F4) || (input.GetKeyDown(KeyCode.Alpha4) && anyAlt)) {
                 var di = env.GetConfigData<DisplayInfo>();
                 di.disableVSync = !di.disableVSync;
                 env.SetConfigData(di);
                 Debug.LogFormatAlways("VSync is now {0}.", di.disableVSync?"disabled":"enabled" );
             }
 
-            renderer.m_outputDebugSelect = new float4(0, 0, 0, 0);
+            rendererInstance->m_outputDebugSelect = new float4(0, 0, 0, 0);
             if (input.GetKey(KeyCode.Alpha1))
-                renderer.m_outputDebugSelect = new float4(1, 0, 0, 0);
+                rendererInstance->m_outputDebugSelect = new float4(1, 0, 0, 0);
             if (input.GetKey(KeyCode.Alpha2))
-                renderer.m_outputDebugSelect = new float4(0, 1, 0, 0);
+                rendererInstance->m_outputDebugSelect = new float4(0, 1, 0, 0);
             if (input.GetKey(KeyCode.Alpha3))
-                renderer.m_outputDebugSelect = new float4(0, 0, 1, 0);
+                rendererInstance->m_outputDebugSelect = new float4(0, 0, 1, 0);
             if (input.GetKey(KeyCode.Alpha4))
-                renderer.m_outputDebugSelect = new float4(0, 0, 0, 1);
+                rendererInstance->m_outputDebugSelect = new float4(0, 0, 0, 1);
             if (input.GetKeyDown(KeyCode.Z))
             {
                 string fn = StringFormatter.Format("screenshot{0}.tga", m_nshots++);
@@ -251,7 +259,7 @@ namespace Unity.Tiny.Rendering
 
             ControlCamera(ecam);
 
-            Entities.WithAll<Light>().ForEach((Entity eLight, ref LightFromCameraByKey lk, ref Translation tPos, ref Rotation tRot) =>
+            Entities.WithoutBurst().WithAll<Light>().ForEach((Entity eLight, ref LightFromCameraByKey lk, ref Translation tPos, ref Rotation tRot) =>
             {
                 if (input.GetKeyDown(lk.key))
                 {
@@ -259,7 +267,7 @@ namespace Unity.Tiny.Rendering
                     tRot = EntityManager.GetComponentData<Rotation>(ecam);
                     Debug.LogFormat("Set light {0} to {1} {2}", eLight, tPos.Value, tRot.Value.value);
                 }
-            });
+            }).Run();
 #endif
         }
     }

@@ -17,6 +17,7 @@ namespace Unity.TinyConversion
                 case UnityEngine.CameraClearFlags.Color:
                     return CameraClearFlags.SolidColor;
                 case UnityEngine.CameraClearFlags.Depth:
+                    return CameraClearFlags.DepthOnly;
                 case UnityEngine.CameraClearFlags.Nothing:
                     return CameraClearFlags.Nothing;
                 default:
@@ -26,6 +27,7 @@ namespace Unity.TinyConversion
     }
 
     [UpdateInGroup(typeof(GameObjectBeforeConversionGroup))]
+    [UpdateAfter(typeof(TransformConversion))]
     public class CameraConversion : GameObjectConversionSystem
     {
         protected override void OnUpdate()
@@ -36,7 +38,7 @@ namespace Unity.TinyConversion
 
                 var camera = new Unity.Tiny.Rendering.Camera();
                 camera.clearFlags = uCamera.clearFlags.ToTiny();
-                camera.backgroundColor = uCamera.backgroundColor.ToTiny();
+                camera.backgroundColor = uCamera.backgroundColor.linear.ToTiny();
                 camera.viewportRect = uCamera.rect.ToTiny();
                 camera.fov =  uCamera.orthographic ? uCamera.orthographicSize : uCamera.fieldOfView;
                 camera.mode = uCamera.orthographic ? ProjectionMode.Orthographic : ProjectionMode.Perspective;
@@ -51,7 +53,9 @@ namespace Unity.TinyConversion
                     customSortAxisSetting = UnityEngine.Rendering.GraphicsSettings.transparencySortAxis;
                 DstEntityManager.AddComponentData(entity, new Unity.Tiny.Rendering.CameraSettings2D
                     { customSortAxis = customSortAxisSetting });
-                
+
+                if (DstEntityManager.HasComponent<NonUniformScale>(entity))
+                    DstEntityManager.SetComponentData(entity, new NonUniformScale(){Value = new float3(1f)});
             });
         }
     }

@@ -3,10 +3,9 @@ using Unity.Mathematics;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.Tiny;
 using Unity.Tiny.Assertions;
-using Unity.Tiny.Rendering;
 using Unity.Transforms;
+using Unity.Jobs;
 
 namespace Unity.Tiny.Rendering
 {
@@ -47,15 +46,14 @@ namespace Unity.Tiny.Rendering
         }
     }
 
+    // optional component for integrations:
+    // world bounds will be updated either from ObjectBounds (if present) 
+    // or MeshBounds (if there is a MeshRenderer)
+    // ObjectBounds will take preference before mesh bounds, if both exist
+    // ObjectBounds are not required for MeshRenderers
     public struct ObjectBounds : IComponentData
     {
-        public AABB bounds;
-    }
-
-    public struct ObjectBoundingSphere : IComponentData
-    {
-        public float3 position;
-        public float radius;
+        public AABB Bounds; 
     }
 
     public struct WorldBoundingSphere : IComponentData
@@ -331,111 +329,105 @@ namespace Unity.Tiny.Rendering
         }
     }
 
-    [UnityEngine.ExecuteAlways]
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    public class UpdateWorldBoundsSystem : ComponentSystem
+    public class UpdateWorldBoundsSystem : SystemBase
     {
         public AABB m_wholeWorldBounds;
 
+        private static void UpdateBoundsFromAABB(ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx, ref AABB bounds)
+        {
+            // world obb
+            Culling.AxisAlignedToWorldBounds(ref tx.Value, ref bounds, out wb);
+            // object sphere (could be made a memeber of MeshBounds and always pre-computed
+            float3 obsphereposition = bounds.Min + bounds.Extents; 
+            float obsradius = math.length(bounds.Extents);
+            // world sphere 
+            wbs.position = math.transform(tx.Value, obsphereposition);
+            // only really needed if there is scale 
+            float3 scale = new float3(math.lengthsq(tx.Value.c0), math.lengthsq(tx.Value.c1), math.lengthsq(tx.Value.c2));
+            float s = math.sqrt(math.cmax(scale));
+            wbs.radius = s * obsradius;
+        }
+
+        EntityQuery m_qAddChunkBounds;
+        EntityQuery m_qAddChunkBoundinSphere;
+        EntityQuery m_qUpdateChunkBounds;
+        EntityQuery m_qMissingWorldBoundingSphere;
+        EntityQuery m_qMissingWorldBounds;
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            m_qAddChunkBoundinSphere = GetEntityQuery(new EntityQueryDesc {
+                All = new [] {ComponentType.ReadOnly<WorldBoundingSphere>()},
+                None = new [] {ComponentType.ChunkComponent<ChunkWorldBoundingSphere>() }
+            });
+
+            m_qAddChunkBounds = GetEntityQuery(new EntityQueryDesc {
+                All = new [] {ComponentType.ReadOnly<WorldBounds>()},
+                None = new [] {ComponentType.ChunkComponent<ChunkWorldBounds>() }
+            });
+
+            m_qUpdateChunkBounds = GetEntityQuery(new EntityQueryDesc {
+                All = new [] {ComponentType.ReadOnly<WorldBounds>(), ComponentType.ReadOnly<WorldBoundingSphere>(),
+                              ComponentType.ChunkComponent<ChunkWorldBoundingSphere>(), ComponentType.ChunkComponent<ChunkWorldBounds>()},
+            });
+
+            m_qMissingWorldBoundingSphere = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new ComponentType[] {ComponentType.ReadOnly<LocalToWorld>()},
+                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
+                None = new ComponentType[] {typeof(WorldBoundingSphere)}
+            });
+
+            m_qMissingWorldBounds = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new ComponentType[] {ComponentType.ReadOnly<LocalToWorld>()},
+                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
+                None = new ComponentType[] {typeof(WorldBounds)}
+            });
+        }
+
         protected override void OnUpdate()
         {
-            // add WorldBounds to ObjectBounds if not present
-            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
-            Entities.WithNone<WorldBounds>().WithAll<ObjectBounds, LocalToWorld>().ForEach((Entity e) =>
-            {
-                ecb.AddComponent<WorldBounds>(e); // zero bounds 
-            });
+            Dependency.Complete();
 
-            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref SimpleMeshReference m) =>
-            {
-                Assert.IsTrue(EntityManager.HasComponent<SimpleMeshRenderData>(m.mesh) == true);
+            // add WorldBounds and WorldBoundingSphere if not present
+            EntityManager.AddComponent<WorldBoundingSphere>(m_qMissingWorldBoundingSphere);
+            EntityManager.AddComponent<WorldBounds>(m_qMissingWorldBounds);
 
-                ObjectBounds ob = default;
-                var mrd = EntityManager.GetComponentData<SimpleMeshRenderData>(m.mesh);
-                ob.bounds = mrd.Mesh.Value.Bounds;
-                ecb.AddComponent(e, ob);
-            });
-
-            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref LitMeshReference m) =>
-            {
-                Assert.IsTrue(EntityManager.HasComponent<LitMeshRenderData>(m.mesh) == true);
-
-                ObjectBounds ob = default;
-                var mrd = EntityManager.GetComponentData<LitMeshRenderData>(m.mesh);
-                ob.bounds = mrd.Mesh.Value.Bounds;
-                ecb.AddComponent(e, ob);
-            });
-
-            ecb.Playback(EntityManager);
-            ecb.Dispose();
-
-            // add and init sphere bounds from object bounds
-            ecb = new EntityCommandBuffer(Allocator.Temp);
-            Entities.WithNone<ObjectBoundingSphere>().ForEach((Entity e, ref ObjectBounds ob) =>
-            {
-                float3 halfext = ob.bounds.Extents;
-                ecb.AddComponent(e,new ObjectBoundingSphere {
-                    position = ob.bounds.Min + halfext,
-                    radius = math.length(halfext)
-                });
-            });
-            ecb.Playback(EntityManager);
-            ecb.Dispose();
-
-            // add world sphere bounds from object bounds
-            ecb = new EntityCommandBuffer(Allocator.Temp);
-            Entities.WithNone<WorldBoundingSphere>().ForEach((Entity e, ref ObjectBounds ob) =>
-            {
-                ecb.AddComponent(e,typeof(WorldBoundingSphere));
-            });
-            ecb.Playback(EntityManager);
-            ecb.Dispose();
-
-            // update bounds -- aa box
-            // TODO: this needs to change track
+            // update world bounds, sphere and box (TODO: this should really change track!)
             float3 bbMinWhole = new float3(float.MaxValue); 
             float3 bbMaxWhole = new float3(-float.MaxValue);
-            Entities.ForEach((Entity e, ref ObjectBounds ob, ref LocalToWorld tx, ref WorldBounds wb) =>
-            {
-                Culling.AxisAlignedToWorldBounds(ref tx.Value, ref ob.bounds, out wb);
+
+            // option one: bounds straight from mesh
+            ComponentDataFromEntity<MeshBounds> cmd = GetComponentDataFromEntity<MeshBounds>(true);
+            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx) => {
+                var mb = cmd[mr.mesh];
+                UpdateBoundsFromAABB(ref wbs, ref wb, ref tx, ref mb.Bounds);
                 Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
-            });
+            }).Run();
+            // option two: bounds from ObjectBounds
+            Entities.ForEach((ref ObjectBounds ob, ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx) => {
+                UpdateBoundsFromAABB(ref wbs, ref wb, ref tx, ref ob.Bounds);
+                Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
+            }).Run();
+
             m_wholeWorldBounds.Center = (bbMaxWhole + bbMinWhole) * .5f;
             m_wholeWorldBounds.Extents = (bbMaxWhole - bbMinWhole) * .5f;
 
-            // update bounds -- spheres
-            Entities.ForEach((Entity e, ref ObjectBoundingSphere ob, ref LocalToWorld tx, ref WorldBoundingSphere b) =>
-            { // with scale
-                b.position = math.transform(tx.Value, ob.position);
-                // only if there is scale 
-                float3 scale = new float3(math.lengthsq(tx.Value.c0), math.lengthsq(tx.Value.c1), math.lengthsq(tx.Value.c2));
-                float s = math.sqrt(math.cmax(scale));
-                b.radius = s * ob.radius;
-            });
-
-            // experimental: chunk bounds, if we keep this it should be done in one loop, updating bounds and chunk bounds at the same time
+            // ----------------------------------------------------------------------------------------------------------------------------------
+            // experimental: chunk bounds, if we keep this it could be done in one loop, updating bounds and chunk bounds at the same time
 
             // add chunk bounds
-            var q = EntityManager.CreateEntityQuery(new EntityQueryDesc {
-                All = new ComponentType[] {ComponentType.ReadOnly<WorldBoundingSphere>()},
-                None = new ComponentType[] {ComponentType.ChunkComponent<ChunkWorldBoundingSphere>() }
-            });
-            EntityManager.AddChunkComponentData(q, new ChunkWorldBoundingSphere());
-            q.Dispose();
-
-            q = EntityManager.CreateEntityQuery(new EntityQueryDesc {
-                All = new ComponentType[] {ComponentType.ReadOnly<WorldBounds>()},
-                None = new ComponentType[] {ComponentType.ChunkComponent<ChunkWorldBounds>() }
-            });
-            EntityManager.AddChunkComponentData(q, new ChunkWorldBounds());
-            q.Dispose();
+            EntityManager.AddChunkComponentData(m_qAddChunkBoundinSphere, new ChunkWorldBoundingSphere {
+                Value = new WorldBoundingSphere {  position = new float3(0), radius = -100000.0f }
+            }); 
+            EntityManager.AddChunkComponentData(m_qAddChunkBounds, new ChunkWorldBounds());
 
             // update all chunk bounds
-            q = EntityManager.CreateEntityQuery(new EntityQueryDesc {
-                All = new ComponentType[] {ComponentType.ReadOnly<WorldBounds>(), ComponentType.ReadOnly<WorldBoundingSphere>(), 
-                                           ComponentType.ChunkComponent<ChunkWorldBoundingSphere>(), ComponentType.ChunkComponent<ChunkWorldBounds>()},
-            });
-            var chunks = q.CreateArchetypeChunkArray(Allocator.TempJob);
+            var chunks = m_qUpdateChunkBounds.CreateArchetypeChunkArray(Allocator.TempJob);
             var chunkBoundsType = EntityManager.GetArchetypeChunkComponentType<ChunkWorldBounds>(false);
             var worldBoundsType = EntityManager.GetArchetypeChunkComponentType<WorldBounds>(true);
             var chunkBoundingSphereType = EntityManager.GetArchetypeChunkComponentType<ChunkWorldBoundingSphere>(false);
@@ -445,26 +437,26 @@ namespace Unity.Tiny.Rendering
                 var worldBounds = chunk.GetNativeArray<WorldBounds>(worldBoundsType);
                 var worldBoundingSpheres = chunk.GetNativeArray<WorldBoundingSphere>(worldBoundingSphereType);
                 float3 bbMin, bbMax;
-                float4 sphere; 
+                float4 sphere;
                 unsafe {
                     WorldBounds *wbPtr = (WorldBounds*)worldBounds.GetUnsafeReadOnlyPtr();
                     WorldBoundingSphere *wbsPtr = (WorldBoundingSphere*)worldBoundingSpheres.GetUnsafeReadOnlyPtr();
                     int k = worldBounds.Length;
-                    Assert.IsTrue(k > 0);
-                    Assert.IsTrue(k == worldBoundingSpheres.Length);
+                    Assert.IsTrue(k > 0 && k == worldBoundingSpheres.Length);
                     bbMin = wbPtr[0].c000;
                     bbMax = bbMin;
                     sphere = new float4(wbsPtr[0].position, wbsPtr[0].radius);
-                    for (int j = 0; j < k; j++) {
+                    for (int j = 1; j < k; j++) {
                         Culling.GrowBounds(ref bbMin, ref bbMax, in wbPtr[j]);
                         Culling.MergeSpheres(ref sphere, new float4(wbsPtr[j].position, wbsPtr[j].radius));
                     }
                 }
                 chunks[i].SetChunkComponentData<ChunkWorldBounds>(chunkBoundsType, new ChunkWorldBounds {
                     Value = new AABB { 
-                        Center = bbMin + (bbMax - bbMin) * 0.5f,
+                        Center = (bbMin + bbMax) * 0.5f,
                         Extents = (bbMax - bbMin) * 0.5f
                     }});
+                Assert.IsTrue(sphere.w > 0.0f);
                 chunks[i].SetChunkComponentData<ChunkWorldBoundingSphere>(chunkBoundingSphereType, new ChunkWorldBoundingSphere {
                     Value = new WorldBoundingSphere {
                         position = sphere.xyz,
@@ -472,7 +464,6 @@ namespace Unity.Tiny.Rendering
                     }});
             }
             chunks.Dispose();
-            q.Dispose();
         }
     }
 }

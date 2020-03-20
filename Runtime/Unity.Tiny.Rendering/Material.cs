@@ -37,7 +37,6 @@ namespace Unity.Tiny.Rendering
         public Entity texMetal;
         public Entity texNormal;
         public Entity texEmissive;
-        public Entity texSmoothness;
 
         public float3 constAlbedo;
         public float3 constEmissive;
@@ -49,6 +48,7 @@ namespace Unity.Tiny.Rendering
         public bool twoSided;
         public bool transparent;
         public bool triangleSortTransparent;
+        public bool smoothnessAlbedoAlpha;
 
         public float2 scale;
         public float2 offset;
@@ -59,7 +59,6 @@ namespace Unity.Tiny.Rendering
                    texMetal.Equals(other.texMetal) &&
                    texNormal.Equals(other.texNormal) &&
                    texEmissive.Equals(other.texEmissive) &&
-                   texSmoothness.Equals(other.texSmoothness) &&
                    constAlbedo.Equals(other.constAlbedo) &&
                    constEmissive.Equals(other.constEmissive) &&
                    constOpacity.Equals(other.constOpacity) &&
@@ -70,9 +69,8 @@ namespace Unity.Tiny.Rendering
                    (transparent == other.transparent) &&
                    (triangleSortTransparent == other.triangleSortTransparent) &&
                    scale.Equals(other.scale) &&
-                   offset.Equals(other.offset);
+                   offset.Equals(other.offset) &&
+                   smoothnessAlbedoAlpha.Equals(other.smoothnessAlbedoAlpha);
         }
     }
-
-    public struct DynamicMaterial : IComponentData{ } // can change material later
 }

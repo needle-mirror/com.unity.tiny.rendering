@@ -14,6 +14,9 @@ namespace Unity.TinyConversion
         protected override void OnUpdate() =>
             Entities.ForEach((UnityEngine.Material uMaterial) =>
             {
+                if (MaterialConversion.GetMaterialType(uMaterial) == MaterialConversion.SupportedMaterialType.Unsupported)
+                    return;
+
                 int[] ids = uMaterial.GetTexturePropertyNameIDs();
                 for (int i = 0; i < ids.Length; i++)
                 {
@@ -59,12 +62,21 @@ namespace Unity.TinyConversion
             return false;
         }
 
+        private bool ContainsShaderKeyword(Material uMaterial, string keyword)
+        {
+            foreach (var key in uMaterial.shaderKeywords)
+                if (key == keyword)
+                    return true;
+            return false;
+        }
+
         private void ConvertUnlitMaterial(Entity entity, Material uMaterial)
         {
             //Do the conversion
             Vector2 textScale = uMaterial.GetTextureScale("_BaseMap");
             Vector2 textTrans = uMaterial.GetTextureOffset("_BaseMap");
             UnityEngine.Color baseColor = uMaterial.GetColor("_BaseColor").linear;
+
             DstEntityManager.AddComponentData<SimpleMaterial>(entity, new SimpleMaterial()
             {
                 texAlbedoOpacity = GetTextureEntity(uMaterial, "_MainTex"),
@@ -86,8 +98,6 @@ namespace Unity.TinyConversion
             Texture t = uMaterial.GetTexture("_OcclusionMap");
             if (!((uMaterial.GetTexture("_OcclusionMap") as Texture2D) is null))
                 UnityEngine.Debug.LogWarning("_OcclusionMap is not supported on material: " + uMaterial.name);
-            if (!((uMaterial.GetTexture("_EmissionMap") as Texture2D) is null))
-                UnityEngine.Debug.LogWarning("_EmissionMap is not supported on material: " + uMaterial.name);
 
             //Do the conversion
             var texAlbedo = GetTextureEntity(uMaterial, "_BaseMap");
@@ -111,13 +121,14 @@ namespace Unity.TinyConversion
                 constOpacity = baseColor.a,
                 constEmissive = emissionColor,
                 texMetal = texMetal,
-                texSmoothness = uMaterial.GetFloat("_Smoothness") > 0.0f ? texAlbedo : texMetal,
                 texNormal = GetTextureEntity(uMaterial, "_BumpMap"),
                 texEmissive = GetTextureEntity(uMaterial, "_EmissionMap"),
+                constMetal = uMaterial.GetFloat("_Metallic"),
                 constSmoothness = uMaterial.GetFloat("_Smoothness"),
                 normalMapZScale = uMaterial.GetFloat("_BumpScale"),
                 twoSided = IsTwoSided(uMaterial),
                 transparent = uMaterial.GetInt("_Surface") == 1,
+                smoothnessAlbedoAlpha = ContainsShaderKeyword(uMaterial, "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A"),
                 scale = new float2(textScale[0], textScale[1]),
                 offset = new float2( textTrans[0], 1 - textTrans[1]) // Invert the offset as well
             });
@@ -126,9 +137,33 @@ namespace Unity.TinyConversion
         public override bool ShouldRunConversionSystem()
         {
             //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
                 return false;
             return base.ShouldRunConversionSystem();
+        }
+
+        internal enum SupportedMaterialType
+        {
+            Unlit,
+            Lit,
+            Other,
+            Unsupported
+        }
+
+        internal static SupportedMaterialType GetMaterialType(UnityEngine.Material uMaterial)
+        {
+            switch (uMaterial.shader.name)
+            {
+                case "Universal Render Pipeline/Unlit":
+                    return SupportedMaterialType.Unlit;
+                case "Universal Render Pipeline/Lit":
+                    return SupportedMaterialType.Lit;
+                case "Sprites/Default": // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion
+                case "Universal Render Pipeline/2D/Sprite-Lit-Default":
+                    return SupportedMaterialType.Other;
+                default:
+                    return SupportedMaterialType.Unsupported;
+            }
         }
 
         protected override void OnUpdate()
@@ -136,19 +171,19 @@ namespace Unity.TinyConversion
             Entities.ForEach((UnityEngine.Material uMaterial) =>
             {
                 var entity = GetPrimaryEntity(uMaterial);
-                switch (uMaterial.shader.name)
+                switch (GetMaterialType(uMaterial))
                 {
-                    case "Universal Render Pipeline/Unlit":
+                    case SupportedMaterialType.Unlit:
                         ConvertUnlitMaterial(entity, uMaterial);
                         break;
-                    case "Universal Render Pipeline/Lit":
+                    case SupportedMaterialType.Lit:
                         ConvertLitMaterial(entity, uMaterial);
                         break;
-                    case "Sprites/Default":    // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion
-                    case "Universal Render Pipeline/2D/Sprite-Lit-Default":
+                    case SupportedMaterialType.Other:
+                        // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion
                         break;
                     default:
-                        UnityEngine.Debug.LogWarning("No material conversion yet for shader " + uMaterial.shader.name);
+                        //UnityEngine.Debug.LogWarning("No material conversion yet for shader " + uMaterial.shader.name);
                         break;
                 }
             });

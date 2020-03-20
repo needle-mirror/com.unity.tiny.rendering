@@ -15,7 +15,7 @@ namespace Unity.Tiny.Authoring
 
         public void Convert(Entity entity, EntityManager dstManager, GameObjectConversionSystem conversionSystem)
         {
-            if (!conversionSystem.TryGetBuildSettingsComponent<DotsRuntimeBuildProfile>(out _))
+            if (!conversionSystem.TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
                 return;
 
             if (mainCamera == null)

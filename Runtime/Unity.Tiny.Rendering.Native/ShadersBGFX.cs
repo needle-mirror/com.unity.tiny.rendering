@@ -1,19 +1,8 @@
 using System;
-using System.Runtime.InteropServices;
-using Unity.Mathematics;
 using Unity.Entities;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.Tiny;
-using Unity.Transforms;
-#if !UNITY_WEBGL
-using Unity.Tiny.STB;
-#else
-using Unity.Tiny.Web;
-#endif
 using Bgfx;
+using Unity.Collections;
 using Unity.Tiny.Assertions;
-
 
 namespace Unity.Tiny.Rendering
 {
@@ -32,8 +21,8 @@ namespace Unity.Tiny.Rendering
                 case bgfx.RendererType.OpenGL: return ref data.glsl;
                 case bgfx.RendererType.Vulkan: return ref data.spirv;
                 default:
-                    Debug.LogFormatAlways("No shader loaded for render type: {0}.", Marshal.PtrToStringAnsi(bgfx.get_renderer_name(type)));
-                    return ref data.dx11;
+                    Debug.LogFormatAlways("No shader loaded for render type: {0}.", RendererBGFXStatic.GetBackendString());
+                    throw new InvalidOperationException("No shader loaded for current backend.");
             }
         }
     }
@@ -44,7 +33,8 @@ namespace Unity.Tiny.Rendering
         {
             bgfx.TextureHandle ret;
             unsafe {
-                ret = bgfx.create_texture_2d(1, 1, false, 1, bgfx.TextureFormat.RGBA8, (ulong)bgfx.TextureFlags.None, CreateMemoryBlock((byte*)&value, 4));
+                ret = bgfx.create_texture_2d(1, 1, false, 1, bgfx.TextureFormat.RGBA8, (ulong)bgfx.TextureFlags.None, 
+                    RendererBGFXStatic.CreateMemoryBlock((byte*)&value, 4));
             }
             return ret;
         }
@@ -64,7 +54,7 @@ namespace Unity.Tiny.Rendering
     #if !UNITY_MACOSX
                     // on Metal desktop we can't initialize depth textures, everywhere else we can
                     // TODO this is a temporary hack to avoid us failing Metal validation
-                    mem = CreateMemoryBlock((byte*)&value, 2);
+                    mem = RendererBGFXStatic.CreateMemoryBlock((byte*)&value, 2);
     #endif
                     ret = bgfx.create_texture_2d(1, 1, false, 1, bgfx.TextureFormat.D16,
                         (ulong) bgfx.SamplerFlags.UClamp | (ulong) bgfx.SamplerFlags.VClamp |
@@ -78,33 +68,27 @@ namespace Unity.Tiny.Rendering
         {
             bgfx.ShaderHandle fshandle, vshandle;
 
-            fshandle = bgfx.create_shader(CreateMemoryBlock(fs, fsLength));
-            vshandle = bgfx.create_shader(CreateMemoryBlock(vs, vsLength));
+            fshandle = bgfx.create_shader(RendererBGFXStatic.CreateMemoryBlock(fs, fsLength));
+            vshandle = bgfx.create_shader(RendererBGFXStatic.CreateMemoryBlock(vs, vsLength));
+            Assert.IsTrue(fshandle.idx != 0xffff && vshandle.idx != 0xffff);
 
             bgfx.set_shader_name(vshandle, debugName, debugName.Length);
             bgfx.set_shader_name(fshandle, debugName, debugName.Length);
-            return bgfx.create_program(vshandle, fshandle, true);
+            var phandle = bgfx.create_program(vshandle, fshandle, true);
+            if (phandle.idx == UInt16.MaxValue)
+                throw new InvalidOperationException($"Failed to link shader {debugName}!");
+            return phandle;
         }
 
-        private static unsafe bgfx.Memory* CreateMemoryBlock(byte* mem, int size)
-        {
-            return bgfx.copy(mem, (uint)size);
-        }
-
-        private static unsafe bgfx.Memory* CreateMemoryBlock(byte[] ar)
-        {
-            fixed (byte* bar = ar) return bgfx.copy(bar, (uint)ar.Length);
-        }
-
-        public static unsafe void GetPrecompiledShaderData(EntityManager em, Entity e, bgfx.RendererType backend, ref byte* fs_ptr, out int fsl, ref byte* vs_ptr, out int vsl)
-        {
-            var fs_data = em.GetComponentData<FragmentShaderBinData>(e);
-            var vs_data = em.GetComponentData<VertexShaderBinData>(e);
-            fsl = fs_data.data.Value.DataForBackend(backend).Length;
-            vsl = vs_data.data.Value.DataForBackend(backend).Length;
+        public static unsafe bgfx.ProgramHandle GetPrecompiledShaderData(bgfx.RendererType backend, VertexShaderBinData vs_data, FragmentShaderBinData fs_data, ref NativeString32 shaderName)        {
+            var fsl = fs_data.data.Value.DataForBackend(backend).Length;
+            var vsl = vs_data.data.Value.DataForBackend(backend).Length;
             Assert.IsTrue(fsl > 0 && vsl > 0, "Shader binary for this backend is not present. Try re-converting the scene for the correct target.");
-            fs_ptr = (byte*)fs_data.data.Value.DataForBackend(backend).GetUnsafePtr();
-            vs_ptr = (byte*)vs_data.data.Value.DataForBackend(backend).GetUnsafePtr();
+            var fs_ptr = (byte*)fs_data.data.Value.DataForBackend(backend).GetUnsafePtr();
+            var vs_ptr = (byte*)vs_data.data.Value.DataForBackend(backend).GetUnsafePtr();
+
+            // TODO change bgfx api to take in char* instead of string
+            return MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, shaderName.ToString());
         }
     };
 
@@ -137,13 +121,17 @@ namespace Unity.Tiny.Rendering
 
         public bgfx.UniformHandle m_samplerAlbedoOpacity;
         public bgfx.UniformHandle m_samplerEmissive;
-        public bgfx.UniformHandle m_samplerSmoothness;
         public bgfx.UniformHandle m_samplerMetal;
         public bgfx.UniformHandle m_samplerNormal;
         
         public bgfx.UniformHandle m_uniformAmbient;
         public bgfx.UniformHandle m_uniformEmissiveNormalZScale;
         public bgfx.UniformHandle m_uniformOutputDebugSelect;
+
+        public bgfx.UniformHandle m_uniformSmoothness;
+
+        public bgfx.UniformHandle m_uniformFogColor;
+        public bgfx.UniformHandle m_uniformFogParams;
 
         // vertex 
         public bgfx.UniformHandle m_matrixCSM;
@@ -175,15 +163,14 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_uniform(dest.m_uniformViewPosOrDir);
             bgfx.destroy_uniform(dest.m_uniformMatrix);
         }
-     
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "lit");
+            m_prog = program;
 
             m_samplerAlbedoOpacity = bgfx.create_uniform("s_texAlbedoOpacity", bgfx.UniformType.Sampler, 1);
             m_samplerMetal = bgfx.create_uniform("s_texMetal", bgfx.UniformType.Sampler, 1);
             m_samplerNormal = bgfx.create_uniform("s_texNormal", bgfx.UniformType.Sampler, 1);
-            m_samplerSmoothness = bgfx.create_uniform("s_texSmoothness", bgfx.UniformType.Sampler, 1);
             m_samplerEmissive = bgfx.create_uniform("s_texEmissive", bgfx.UniformType.Sampler, 1);
 
             m_uniformAlbedoOpacity = bgfx.create_uniform("u_albedo_opacity", bgfx.UniformType.Vec4, 1);
@@ -213,6 +200,11 @@ namespace Unity.Tiny.Rendering
             m_numLights = bgfx.create_uniform("u_numlights", bgfx.UniformType.Vec4, 1);
 
             m_uniformOutputDebugSelect = bgfx.create_uniform("u_outputdebugselect", bgfx.UniformType.Vec4, 1);
+
+            m_uniformSmoothness = bgfx.create_uniform("u_smoothness_params", bgfx.UniformType.Vec4, 1);
+
+            m_uniformFogColor = bgfx.create_uniform("u_fogcolor", bgfx.UniformType.Vec4, 1);
+            m_uniformFogParams = bgfx.create_uniform("u_fogparams", bgfx.UniformType.Vec4, 1);
         }
 
         public void Destroy()
@@ -220,7 +212,6 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_program(m_prog);
             bgfx.destroy_uniform(m_samplerAlbedoOpacity);
             bgfx.destroy_uniform(m_samplerMetal);
-            bgfx.destroy_uniform(m_samplerSmoothness);
             bgfx.destroy_uniform(m_samplerEmissive);
             bgfx.destroy_uniform(m_samplerNormal);
 
@@ -249,6 +240,11 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_uniform(m_dirCSM);
             bgfx.destroy_uniform(m_colorCSM);
             bgfx.destroy_uniform(m_matrixCSM);
+
+            bgfx.destroy_uniform(m_uniformSmoothness);
+
+            bgfx.destroy_uniform(m_uniformFogColor);
+            bgfx.destroy_uniform(m_uniformFogParams);
         }
     }
 
@@ -259,10 +255,9 @@ namespace Unity.Tiny.Rendering
         public bgfx.UniformHandle m_uniformColor0;
         public bgfx.UniformHandle m_uniformTexMad;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "simple");
-
+            m_prog = program;
             m_samplerTexColor0 = bgfx.create_uniform("s_texColor", bgfx.UniformType.Sampler, 1);
             m_uniformColor0 = bgfx.create_uniform("u_color0", bgfx.UniformType.Vec4, 1);
             m_uniformTexMad = bgfx.create_uniform("u_texmad", bgfx.UniformType.Vec4, 1);
@@ -286,9 +281,9 @@ namespace Unity.Tiny.Rendering
         public bgfx.UniformHandle m_coloradd;
         public bgfx.UniformHandle m_decodeSRGB_encodeSRGB_reinhard_premultiply;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "blitsrgb");
+            m_prog = program;
 
             m_uniformTexMad = bgfx.create_uniform("u_texmad", bgfx.UniformType.Vec4, 1);
             m_samplerTexColor0 = bgfx.create_uniform("s_texColor", bgfx.UniformType.Sampler, 1);
@@ -314,20 +309,21 @@ namespace Unity.Tiny.Rendering
         public bgfx.UniformHandle m_samplerTexColor0;
         public bgfx.UniformHandle m_uniformColor0;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "etxernalblites3");
+            m_prog = program;
             m_samplerTexColor0 = bgfx.create_uniform("s_texColor", bgfx.UniformType.Sampler, 1);
             m_uniformColor0 = bgfx.create_uniform("u_color0", bgfx.UniformType.Vec4, 1);
         }
 
         public void Destroy()
         {
-            if (m_prog.idx == 0)
+            if (m_prog.idx == 0 || m_prog.idx == UInt16.MaxValue)
                 return; 
             bgfx.destroy_program(m_prog);
             bgfx.destroy_uniform(m_samplerTexColor0);
             bgfx.destroy_uniform(m_uniformColor0);
+            m_prog.idx = UInt16.MaxValue;
         }
     }
 
@@ -335,9 +331,9 @@ namespace Unity.Tiny.Rendering
     {
         public bgfx.ProgramHandle m_prog;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-           m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "line");
+            m_prog = program;
         }
 
         public void Destroy()
@@ -352,9 +348,9 @@ namespace Unity.Tiny.Rendering
 
         public bgfx.UniformHandle m_uniformDebugColor;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "zOnly");
+            m_prog = program;
             m_uniformDebugColor = bgfx.create_uniform("u_colorDebug", bgfx.UniformType.Vec4, 1);
         }
 
@@ -372,9 +368,9 @@ namespace Unity.Tiny.Rendering
         public bgfx.UniformHandle m_uniformBias;
         public bgfx.UniformHandle m_uniformDebugColor;
 
-        public unsafe void Init(byte* fs_ptr, int fsl, byte* vs_ptr, int vsl, bgfx.RendererType backend)
+        public void Init(bgfx.ProgramHandle program)
         {
-            m_prog = BGFXShaderHelper.MakeProgram(backend, fs_ptr, fsl, vs_ptr, vsl, "shadowmap");
+            m_prog = program;
             m_uniformBias = bgfx.create_uniform("u_bias", bgfx.UniformType.Vec4, 1);
             m_uniformDebugColor = bgfx.create_uniform("u_colorDebug", bgfx.UniformType.Vec4, 1);
         }
@@ -386,5 +382,6 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_uniform(m_uniformDebugColor);
         }
     }
+
 }
 

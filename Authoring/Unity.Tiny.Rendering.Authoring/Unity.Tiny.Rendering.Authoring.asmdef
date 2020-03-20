@@ -17,7 +17,8 @@
         "Unity.Assertions",
         "Unity.Burst",
         "Unity.Properties",
-        "Unity.Tiny.Scenes.Authoring"
+        "Unity.Tiny.Scenes.Authoring",
+        "Unity.Transforms.Hybrid"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

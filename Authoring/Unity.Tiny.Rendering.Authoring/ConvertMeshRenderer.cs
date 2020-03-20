@@ -12,17 +12,18 @@ using Unity.Entities.Runtime.Build;
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectDeclareReferencedObjectsGroup))]
-    class MeshRendererDeclareAssets : GameObjectConversionSystem
+    public class MeshRendererDeclareAssets : GameObjectConversionSystem
     {
         public override bool ShouldRunConversionSystem()
         {
             //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
                 return false;
             return base.ShouldRunConversionSystem();
         }
 
-        protected override void OnUpdate() =>
+        protected override void OnUpdate()
+        {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
             {
                 foreach (Material mat in uMeshRenderer.sharedMaterials)
@@ -37,49 +38,18 @@ namespace Unity.TinyConversion
 
                 DeclareReferencedAsset(uMeshFilter.sharedMesh);
             });
+        }
     }
+
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
     [UpdateBefore(typeof(MeshConversion))]
-    [UpdateAfter(typeof(MeshRendererConversion))]
-    public class AddMeshRenderDataSystem : GameObjectConversionSystem
-    {
-        public override bool ShouldRunConversionSystem()
-        {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
-        protected override void OnUpdate()
-        {
-            Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
-            {
-                MeshFilter uMeshfilter = uMeshRenderer.gameObject.GetComponent<MeshFilter>();
-                UnityEngine.Mesh uMesh = uMeshfilter.sharedMesh;
-                var meshEntity = GetPrimaryEntity(uMesh);
-
-                var mrEntity = GetPrimaryEntity(uMeshRenderer);
-                var matEntity = DstEntityManager.GetComponentData<Unity.Tiny.Rendering.MeshRenderer>(mrEntity).material;
-
-                //Add empty MeshRenderData component that will be filled by the mesh conversion.
-                if(DstEntityManager.HasComponent<SimpleMaterial>(matEntity))
-                    DstEntityManager.AddComponent<SimpleMeshRenderData>(meshEntity); 
-                else if(DstEntityManager.HasComponent<LitMaterial>(matEntity))
-                    DstEntityManager.AddComponent<LitMeshRenderData>(meshEntity);
-                
-            });
-        }
-    }
-
-    [UpdateInGroup(typeof(GameObjectConversionGroup))]
     [UpdateAfter(typeof(MaterialConversion))]
     public class MeshRendererConversion : GameObjectConversionSystem
     {
         public override bool ShouldRunConversionSystem()
         {
             //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (GetBuildSettingsComponent<DotsRuntimeBuildProfile>() == null)
+            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
                 return false;
             return base.ShouldRunConversionSystem();
         }
@@ -88,69 +58,87 @@ namespace Unity.TinyConversion
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
             {
-                var primaryEntity = GetPrimaryEntity(uMeshRenderer);
-                MeshFilter uMeshfilter = uMeshRenderer.gameObject.GetComponent<MeshFilter>();
-                UnityEngine.Mesh mesh = uMeshfilter.sharedMesh;
+                UnityEngine.Mesh uMesh = uMeshRenderer.gameObject.GetComponent<MeshFilter>().sharedMesh;
+                var sharedMaterials = uMeshRenderer.sharedMaterials;
+                var meshEntity = GetPrimaryEntity(uMesh);
 
-                for (int i = 0; i < mesh.subMeshCount; i++)
+                for (int i = 0; i < uMesh.subMeshCount; i++)
                 {
-                    //Use the primary entity on the first submesh
-                    if (i == 0)
+                    // Find the target material entity to be used for this submesh
+                    Entity targetMaterial = FindTargetMaterialEntity(this, sharedMaterials, i);
+
+                    var isLit = DstEntityManager.HasComponent<LitMaterial>(targetMaterial);
+                    var isSimple = DstEntityManager.HasComponent<SimpleMaterial>(targetMaterial);
+
+                    // We only handle these two materials here
+                    if (isLit || isSimple)
                     {
-                        ConvertSubmesh(uMeshRenderer, uMeshfilter, primaryEntity, 0);
+                        Entity subMeshRenderer = ConvertSubmesh(this, uMeshRenderer, uMesh, meshEntity, i, targetMaterial);
+
+                        if (isLit)
+                        {
+                            DstEntityManager.AddComponent<LitMeshRenderer>(subMeshRenderer);
+
+                            DstEntityManager.AddComponent<LitMeshRenderData>(meshEntity);
+                            // Remove simple data if it was there, we don't need it
+                            DstEntityManager.RemoveComponent<SimpleMeshRenderData>(meshEntity);
+                        }
+                        else if (DstEntityManager.HasComponent<SimpleMaterial>(targetMaterial))
+                        {
+                            DstEntityManager.AddComponent<SimpleMeshRenderer>(subMeshRenderer);
+
+                            // Remove simple data if we have lit already
+                            if (!DstEntityManager.HasComponent<LitMeshRenderData>(meshEntity))
+                                DstEntityManager.AddComponent<SimpleMeshRenderData>(meshEntity);
+                        }
                     }
-                    else
-                    {
-                        Entity newSubMeshEntity = CreateAdditionalEntity(uMeshRenderer);
-                        ConvertSubmesh(uMeshRenderer, uMeshfilter, newSubMeshEntity, i);
-                        AddTransformComponent(primaryEntity, newSubMeshEntity);
-                    }  
                 }
             });
         }
 
-        private void ConvertSubmesh(UnityEngine.MeshRenderer uMeshRenderer, MeshFilter uMeshFilter, Entity entity, int subMeshIndex)
+        // For the given MeshRenderer, find the Entity corresponding to the Material we will use to render the submesh at the given index
+        public static Entity FindTargetMaterialEntity(GameObjectConversionSystem gsys, Material[] sharedMaterials, int materialIndex)
         {
-            UnityEngine.Mesh mesh = uMeshFilter.sharedMesh;
+            // If there are more materials than sub-meshes, the last submesh will be rendered with each of the remaining materials.
+            // If there are less materials than submeshes, just use the last material on the remaining meshrenderers
 
-            //Get all entities on the shared mesh and just use the one with same type as the material
-            var meshEntity = GetPrimaryEntity(mesh);
-
-            //In Big-U, If there are more materials than sub-meshes, the last submesh will be rendered with each of the remaining materials.
-            List<Material> materials = new List<Material>();
-            uMeshRenderer.GetSharedMaterials(materials);
-
-            //If there are less materials than submeshes, just use the last material on the remaining meshrenderers
-            var entityMaterial = GetPrimaryEntity(materials[materials.Count - 1]);
-            if (subMeshIndex < materials.Count)
-                entityMaterial = GetPrimaryEntity(materials[subMeshIndex]);
-
-            DstEntityManager.AddComponentData(entity, new Unity.Tiny.Rendering.MeshRenderer()
-            {
-                material = entityMaterial,
-                startIndex = Convert.ToUInt16(mesh.GetIndexStart(subMeshIndex)),
-                indexCount = Convert.ToUInt16(mesh.GetIndexCount(subMeshIndex))
-            });
-            DstEntityManager.AddComponentData(entity, new WorldBounds());
-            if (DstEntityManager.HasComponent<LitMaterial>(entityMaterial))
-            {
-                DstEntityManager.AddComponentData(entity, new LitMeshReference() { mesh = meshEntity });
-            }
-            else if (DstEntityManager.HasComponent<SimpleMaterial>(entityMaterial))
-            {
-                DstEntityManager.AddComponentData(entity, new SimpleMeshReference() { mesh = meshEntity });
-            }
+            materialIndex = materialIndex < sharedMaterials.Length ? materialIndex : sharedMaterials.Length - 1;
+            return gsys.GetPrimaryEntity(sharedMaterials[materialIndex]);
         }
 
-        private void AddTransformComponent(Entity uMeshRenderer, Entity subMeshRendererEntity)
+        public static Entity ConvertSubmesh(GameObjectConversionSystem gsys, UnityEngine.MeshRenderer uMeshRenderer,
+                                            UnityEngine.Mesh uMesh, Entity meshEntity, int subMeshIndex, Entity materialEntity)
         {
-            DstEntityManager.AddComponentData<Parent>(subMeshRendererEntity, new Parent()
+            Entity primaryMeshRenderer = gsys.GetPrimaryEntity(uMeshRenderer);
+            Entity meshRendererEntity = primaryMeshRenderer;
+
+            if (subMeshIndex > 0)
+            {
+                meshRendererEntity = gsys.CreateAdditionalEntity(uMeshRenderer);
+                AddTransformComponent(gsys, primaryMeshRenderer, meshRendererEntity);
+            }
+
+            gsys.DstEntityManager.AddComponentData(meshRendererEntity, new Unity.Tiny.Rendering.MeshRenderer()
+            {
+                mesh = meshEntity,
+                material = materialEntity,
+                startIndex = Convert.ToUInt16(uMesh.GetIndexStart(subMeshIndex)),
+                indexCount = Convert.ToUInt16(uMesh.GetIndexCount(subMeshIndex))
+            });
+            gsys.DstEntityManager.AddComponentData(meshRendererEntity, new WorldBounds());
+
+            return meshRendererEntity;
+        }
+
+        static void AddTransformComponent(GameObjectConversionSystem gsys, Entity uMeshRenderer, Entity subMeshRendererEntity)
+        {
+            gsys.DstEntityManager.AddComponentData<Parent>(subMeshRendererEntity, new Parent()
             {
                 Value = uMeshRenderer
             });
 
-            DstEntityManager.AddComponentData<LocalToWorld>(subMeshRendererEntity, new LocalToWorld());
-            DstEntityManager.AddComponentData<LocalToParent>(subMeshRendererEntity, new LocalToParent() {
+            gsys.DstEntityManager.AddComponentData<LocalToWorld>(subMeshRendererEntity, new LocalToWorld());
+            gsys.DstEntityManager.AddComponentData<LocalToParent>(subMeshRendererEntity, new LocalToParent() {
                 Value = float4x4.identity
             });
         }

@@ -8,33 +8,30 @@ namespace Unity.Tiny.Rendering
     /// </summary>
     public struct MeshRenderer : IComponentData
     {
-        public Entity material;
-        public int startIndex;
+        public Entity material;     // points to the entity with a material, must be a lit material
+        public Entity mesh;         // points to the entity with the mesh, this must be a lit mesh
+        public int startIndex;      // sub mesh indexing
         public int indexCount;
     }
 
     /// <summary>
-    /// Component containing a reference to an unlit mesh to add next to a MeshRenderer Component
+    /// Component next to a MeshRenderer, indicating it is unlit
     /// </summary>
-    public struct SimpleMeshReference : IComponentData
+    public struct SimpleMeshRenderer : IComponentData
     {
-        public Entity mesh; // Entity reference to a unlit mesh data
     }
 
     /// <summary>
-    /// Component containing a reference to a lit mesh to add next to a MeshRenderer Component
+    /// Component next to a MeshRenderer, indicating it is lit with the basic lit shader 
     /// </summary>
-    public struct LitMeshReference : IComponentData
+    public struct LitMeshRenderer : IComponentData
     {
-        public Entity mesh; // Entity reference to a lit mesh data
     }
 
     public struct BlitRenderer : IComponentData
     {
         public Entity texture;
-        public float4 color;
-        public bool preserveAspect;
+        public float4 color; // linear
         public bool useExternalBlitES3;
-        // source/dest rects? 
     }
 }

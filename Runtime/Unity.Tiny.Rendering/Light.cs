@@ -104,9 +104,14 @@ namespace Unity.Tiny.Rendering
         public AABB boundsClipped;          // set to the clipped receiver bounds if clipToCamera is set (world space)
     }
     
-    public struct LightToBGFXLightingSetup : IBufferElementData
+    public struct LightToLightingSetup : IBufferElementData
     {
         public Entity e; // the light should add itself to this lighting setup
+    }
+
+    public struct LightingRef : ISharedComponentData
+    {
+        public Entity e;
     }
 
     /// <summary>
@@ -115,10 +120,27 @@ namespace Unity.Tiny.Rendering
     /// </summary>
     public struct AmbientLight : IComponentData { }
 
+    public struct Fog : IComponentData
+    {
+        public enum Mode
+        {
+            None = 0,
+            Linear = 1,
+            Exponential = 2,
+            ExponentialSquared = 4
+        }
+
+        public Mode mode;
+        public float4 color;
+        public float density;
+        public float startDistance;
+        public float endDistance;
+    }
+
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     [UpdateBefore(typeof(UpdateLightMatricesSystem))]
     [UpdateAfter(typeof(UpdateWorldBoundsSystem))]
-    public class UpdateAutoMovingLightSystem : ComponentSystem
+    public class UpdateAutoMovingLightSystem : SystemBase
     {
         private AABB RotateBounds (ref float4x4 tx, ref AABB b)
         {
@@ -286,23 +308,24 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate() 
         {
+            Dependency.Complete();
 #if DEBUG
             // debug check that csm lights are AutoMovingDirectionalLight
-            Entities.WithNone<AutoMovingDirectionalLight>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) => {
+            Entities.WithoutBurst().WithNone<AutoMovingDirectionalLight>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) => {
                 Assert.IsTrue(false, "Lights with CascadeShadowmappedLight must include AutoMovingDirectionalLight component for bounds." );
-            });
+            }).Run();
 #endif
             // add csm caches to lights
             EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
             Entities.WithNone<CascadeShadowmappedLightCache>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) => 
             {
                 ecb.AddComponent<CascadeShadowmappedLightCache>(e);
-            });
+            }).Run();
             ecb.Playback(EntityManager);
             ecb.Dispose();
 
             var sysBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>();
-            Entities.WithAll<DirectionalLight>().ForEach((Entity eLight, ref AutoMovingDirectionalLight amdl,
+            Entities.WithoutBurst().WithAll<DirectionalLight>().ForEach((Entity eLight, ref AutoMovingDirectionalLight amdl,
                 ref Light l, ref LocalToWorld ltw, ref Rotation rx, ref Translation tx, ref NonUniformScale sc) => 
             {
                 Assert.IsTrue(!EntityManager.HasComponent<Parent>(eLight), "Auto moving directional lights can not have a parent transform" );
@@ -318,20 +341,24 @@ namespace Unity.Tiny.Rendering
                     AssignCascades(ref amdl, ref ltw, ref rx, ref csm, ref csmDest);
                     EntityManager.SetComponentData<CascadeShadowmappedLightCache>(eLight, csmDest);
                 }
-            });
+            }).Run();
         }
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    public class UpdateLightMatricesSystem : ComponentSystem
+    public class UpdateLightMatricesSystem : SystemBase
     {
         protected override void OnUpdate() 
         {
+            Dependency.Complete();
             // add matrices component if needed 
-            Entities.WithNone<LightMatrices>().WithAll<Light>().ForEach((Entity e) =>
+            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
+            Entities.WithoutBurst().WithNone<LightMatrices>().WithAll<Light>().ForEach((Entity e) =>
             {
-                EntityManager.AddComponent<LightMatrices>(e);
-            });
+                ecb.AddComponent<LightMatrices>(e);
+            }).Run();
+            ecb.Playback(EntityManager);
+            ecb.Dispose();
             
             // update 
             Entities.ForEach((ref Light c, ref LocalToWorld tx, ref LightMatrices m, ref SpotLight sl) =>
@@ -340,14 +367,14 @@ namespace Unity.Tiny.Rendering
                 m.view = math.inverse(tx.Value);
                 m.mvp = math.mul(m.projection, m.view);
                 ProjectionHelper.FrustumFromMatrices(m.projection, m.view, out m.frustum);
-            });
+            }).Run();
             Entities.ForEach((ref Light c, ref LocalToWorld tx, ref LightMatrices m, ref DirectionalLight dr) =>
             { // directional
                 m.projection = ProjectionHelper.ProjectionMatrixOrtho(0.0f, 1.0f, 1.0f, 1.0f);
                 m.view = math.inverse(tx.Value);
                 m.mvp = math.mul(m.projection, m.view);
                 ProjectionHelper.FrustumFromMatrices(m.projection, m.view, out m.frustum);
-            });
+            }).Run();
             Entities.WithNone<DirectionalLight, SpotLight>().ForEach((ref Light c, ref LocalToWorld tx, ref LightMatrices m) =>
             { // point
                 m.projection = float4x4.identity;
@@ -355,7 +382,7 @@ namespace Unity.Tiny.Rendering
                 m.mvp = math.mul(m.projection, m.view);
                 // build furstum from bounds 
                 ProjectionHelper.FrustumFromCube(tx.Value.c3.xyz, c.clipZFar, out m.frustum);
-            });
+            }).Run();
         }
     }
 }

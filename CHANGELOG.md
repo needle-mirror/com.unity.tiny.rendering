@@ -4,6 +4,9 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2020-03-20
+* Fixes in the runtime lit shader: metallic, smoothness and emission are now working as expected. The runtime and Editor appearance are getting closer.
+
 ## [0.22.0] - 2020-02-05
 
 * Update package dependencies
@@ -12,7 +15,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 * `TinyDisplayInfo` is now exported via a configuration system
 * Add custom inspectors for new light components
 * Fix srgb color conversion to better match the editor scene view
-* Runtime colorspace and sRGB usage will match Project Player colorspace settings
 
 ## [0.21.0] - 2020-01-21
 

@@ -69,8 +69,14 @@ namespace Unity.Tiny.Rendering
     
     public struct RenderPassUpdateFromCamera : IComponentData
     {
-        // frustum and transforms will auto update from a camera entity 
+        // frustum, clear color, and transforms will auto update from a camera entity
         public Entity camera; // must have Camera component
+        public bool updateClear; // update clear state and color from camera as well, if not set, clear state will be left alone
+    }
+
+    public struct RenderPassUpdateFromBlitterAutoAspect : IComponentData
+    {
+        public Entity blitRenderer;
     }
 
     public struct RenderPassUpdateFromLight : IComponentData
@@ -93,8 +99,13 @@ namespace Unity.Tiny.Rendering
 
     public struct RenderPassAutoSizeToNode : IComponentData
     {
-        // convenience, place next to a RenderPass so it updates it's size to match the node's size 
+        // convenience, place next to a RenderPass so it updates its size to match the node's size 
         // the node must be either primary or have a target texture of some sort
+    }
+
+    public struct RenderPassClearColorFromBorder : IComponentData
+    {
+        // convenience, place next to a RenderPass so its clear color is updated from DisplayInfo.backgroundBorderColor 
     }
 
     [Flags]
@@ -123,12 +134,20 @@ namespace Unity.Tiny.Rendering
         FullscreenQuad = 16,
         ShadowMap = 32,
         Sprites = 64,
-        DebugOverlay = 128
+        DebugOverlay = 128,
+        Clear = 256
     }
 
     public struct RenderPassRect 
     {
         public ushort x, y, w, h;
+    }
+
+    public enum RenderPassFlags : uint
+    {
+        FlipCulling = 3,
+        CullingMask = 3,
+        RenderToTexture = 4
     }
 
     public struct RenderPass : IComponentData
@@ -141,20 +160,24 @@ namespace Unity.Tiny.Rendering
         public ushort viewId;
         public RenderPassRect scissor;
         public RenderPassRect viewport;
-        public RenderPassClear clearFlags; // matches bgfx
-        public byte flipCulling; // 3 if culling direction needs to be flipped, 0 otherwise
-        public uint clearRGBA; // matches bgfx
-        public float clearDepth; // matches bgfx
-        public byte clearStencil; // matches bgfx
+        public RenderPassClear clearFlags;  // matches bgfx 
+        public uint clearRGBA;              // clear color, packed in bgfx format 
+        public float clearDepth;            // matches bgfx
+        public byte clearStencil;           // matches bgfx
+        public RenderPassFlags passFlags; // flags not used by bgfx, used internally
         public Frustum frustum; // Frustum for late stage culling
+
+        // next to it, optional, Frustum for late stage culling
+        public byte GetFlipCulling() { return (byte)(passFlags & RenderPassFlags.CullingMask); }
+        public byte GetFlipCullingInverse() { return (byte)((passFlags & RenderPassFlags.CullingMask)^RenderPassFlags.CullingMask); }
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     [UpdateAfter(typeof(RendererBGFXSystem))]
     [UpdateAfter(typeof(UpdateCameraMatricesSystem))]
     [UpdateAfter(typeof(UpdateLightMatricesSystem))]
-    [UpdateBefore(typeof(SubmitFrameSystem))]
-    public class PreparePassesSystem : ComponentSystem
+    [UpdateBefore(typeof(SubmitSystemGroup))]
+    public unsafe class PreparePassesSystem : SystemBase
     {
         private void RecAddPasses(Entity eNode, ref ushort nextViewId)
         {
@@ -181,28 +204,32 @@ namespace Unity.Tiny.Rendering
             }
         }
 
+        protected override void OnCreate() {
+        }
+
         protected override void OnUpdate() {
-            var bgfxsys = World.GetExistingSystem<RendererBGFXSystem>();
-            if (!bgfxsys.m_initialized)
+            var bgfxinst = World.GetExistingSystem<RendererBGFXSystem>().InstancePointer();
+            if (!bgfxinst->m_initialized)
                 return;
 
             // make sure passes have viewid, transform, scissor rect and view rect set 
 
             // reset alreadyAdded state
             // we expect < 100 or so passes, so the below code does not need to be crazy great 
-            Entities.ForEach((ref RenderNode rnode) => { rnode.alreadyAdded = false; });
-            Entities.ForEach((ref RenderPass pass) => { pass.viewId = 0xffff; }); // there SHOULD not be any passes around that are not referenced by the graph... 
+            Entities.ForEach((ref RenderNode rnode) => { rnode.alreadyAdded = false; }).Run();
+            Entities.ForEach((ref RenderPass pass) => { pass.viewId = 0xffff; }).Run(); // there SHOULD not be any passes around that are not referenced by the graph... 
 
             // get all nodes, sort (bgfx issues in-order per view. a better api could use the render graph to issue without gpu
             // barriers where possible)
             // sort into eval order, assign pass viewId 
             ushort nextViewId = 0;
-            Entities.WithAll<RenderNodePrimarySurface>().ForEach((Entity eNode) => { RecAddPasses(eNode, ref nextViewId); });
+            Entities.WithoutBurst().WithAll<RenderNodePrimarySurface>().ForEach((Entity eNode) => { RecAddPasses(eNode, ref nextViewId); }).Run();
 
-            Entities.WithAll<RenderPassAutoSizeToNode>().ForEach((Entity e, ref RenderPass pass) =>
+            var di = World.TinyEnvironment().GetConfigData<DisplayInfo>();
+
+            Entities.WithoutBurst().WithAll<RenderPassAutoSizeToNode>().ForEach((Entity e, ref RenderPass pass) =>
             {
-                if (EntityManager.HasComponent<RenderNodePrimarySurface>(pass.inNode)) {
-                    var di = World.TinyEnvironment().GetConfigData<DisplayInfo>();
+                if (EntityManager.HasComponent<RenderNodePrimarySurface>(pass.inNode)) {                    
                     pass.viewport.x = 0;
                     pass.viewport.y = 0;
                     pass.viewport.w = (ushort)di.framebufferWidth;
@@ -214,40 +241,80 @@ namespace Unity.Tiny.Rendering
                     pass.viewport = texRef.rect;
                 }
                 // TODO: add others like cubemap
-            });
+            }).Run();
 
             // auto update passes that are matched with a camera 
-            Entities.ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromCamera fromCam) =>
+            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromCamera fromCam) =>
             {
                 Entity eCam = fromCam.camera;
+                Camera cam = EntityManager.GetComponentData<Camera>(eCam);
                 CameraMatrices camData = EntityManager.GetComponentData<CameraMatrices>(eCam);
                 pass.viewTransform = camData.view;
                 pass.projectionTransform = camData.projection;
                 pass.frustum = camData.frustum;
-            });
+                if ( fromCam.updateClear ) {
+                    switch ( cam.clearFlags ) {
+                        default:
+                        case CameraClearFlags.SolidColor:
+                            pass.clearFlags = RenderPassClear.Color | RenderPassClear.Depth;
+                            break;
+                        case CameraClearFlags.DepthOnly:
+                            pass.clearFlags = RenderPassClear.Depth;
+                            break;
+                        case CameraClearFlags.Nothing:
+                            pass.clearFlags = 0;
+                            break;
+                    }
+                    float4 cc = cam.backgroundColor.AsFloat4();
+                    if ( di.colorSpace==ColorSpace.Gamma )
+                        cc = Color.LinearToSRGB(cc);
+                    pass.clearRGBA = RendererBGFXStatic.PackColorBGFX(cc);
+                }
+            }).Run();
+
+            Entities.WithAll<RenderPassClearColorFromBorder>().ForEach((Entity e, ref RenderPass pass) => {
+                float4 cc = di.backgroundBorderColor.AsFloat4();
+                if ( di.colorSpace==ColorSpace.Gamma )
+                    cc = Color.LinearToSRGB(cc);
+                pass.clearRGBA = RendererBGFXStatic.PackColorBGFX(cc);
+            }).Run();
 
             // auto update passes that are matched with a cascade
-            Entities.ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromCascade fromCascade) => {
+            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromCascade fromCascade) => {
                 Entity eLight = fromCascade.light;
                 CascadeShadowmappedLightCache csmData = EntityManager.GetComponentData<CascadeShadowmappedLightCache>(eLight);
                 CascadeData cs = csmData.GetCascadeData(fromCascade.cascade);
                 pass.viewTransform = cs.view;
                 pass.projectionTransform = cs.proj;
                 pass.frustum = cs.frustum;
-            });
+            }).Run();
 
             // auto update passes that are matched with a light
-            Entities.ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromLight fromLight) =>
-            {
+            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromLight fromLight) => {
                 Entity eLight = fromLight.light;
                 LightMatrices lightData = EntityManager.GetComponentData<LightMatrices>(eLight);
                 pass.viewTransform = lightData.view;
                 pass.projectionTransform = lightData.projection;
                 pass.frustum = lightData.frustum;
-            });
+            }).Run();
+
+            // set model matrix for blitting to automatically match texture aspect 
+            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass, ref RenderPassUpdateFromBlitterAutoAspect b) => {
+                var br = EntityManager.GetComponentData<BlitRenderer>(b.blitRenderer);
+                var im2d = EntityManager.GetComponentData<Image2D>(br.texture);
+                float srcAspect = (float)im2d.imagePixelWidth / (float)im2d.imagePixelHeight;
+                float4x4 m = float4x4.identity;
+                float destAspect = (float)pass.viewport.w / (float)pass.viewport.h;
+                if (destAspect <= srcAspect) { // flip comparison to zoom in instead of black bars 
+                    m.c0.x = 1.0f; m.c1.y = destAspect / srcAspect;
+                } else {
+                    m.c0.x = srcAspect / destAspect; m.c1.y = 1.0f;
+                }
+                pass.viewTransform = m;
+            }).Run();
 
             // set up extra pass data 
-            Entities.ForEach((Entity e, ref RenderPass pass) =>
+            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass) =>
             {
                 if (pass.viewId == 0xffff) {
                     RenderDebug.LogFormat("Render pass entity {0} on render node entity {1} is not referenced by the render graph. It should be deleted.", e, pass.inNode);
@@ -255,16 +322,19 @@ namespace Unity.Tiny.Rendering
                     return;
                 }
                 bool rtt = EntityManager.HasComponent<FramebufferBGFX>(pass.inNode);
+                if ( rtt ) pass.passFlags = RenderPassFlags.RenderToTexture;
+                else pass.passFlags = 0;
                 // those could be more shared ... (that is, do all passes really need a copy of view & projection?)
                 unsafe { fixed (float4x4* viewp = &pass.viewTransform, projp = &pass.projectionTransform) {
-                    if ( bgfxsys.m_homogeneousDepth && bgfxsys.m_originBottomLeft ) { // gl style
+                    if ( bgfxinst->m_homogeneousDepth && bgfxinst->m_originBottomLeft ) { // gl style
                         bgfx.set_view_transform(pass.viewId, viewp, projp);
-                        pass.flipCulling = 0;
+                        pass.passFlags &= ~RenderPassFlags.FlipCulling;
                     } else { // dx style
-                        bool yflip = !bgfxsys.m_originBottomLeft && rtt;
-                        float4x4 adjustedProjection = RendererBGFXSystem.AdjustProjection(ref pass.projectionTransform, !bgfxsys.m_homogeneousDepth, yflip);
+                        bool yflip = !bgfxinst->m_originBottomLeft && rtt;
+                        float4x4 adjustedProjection = RendererBGFXStatic.AdjustProjection(ref pass.projectionTransform, !bgfxinst->m_homogeneousDepth, yflip);
                         bgfx.set_view_transform(pass.viewId, viewp, &adjustedProjection);
-                        pass.flipCulling = yflip ? (byte)3 : (byte)0;
+                        if (yflip) pass.passFlags |= RenderPassFlags.FlipCulling;
+                        else pass.passFlags &= ~RenderPassFlags.FlipCulling;
                     }
                 }}
                 bgfx.set_view_mode(pass.viewId, (bgfx.ViewMode)pass.sorting);
@@ -279,7 +349,7 @@ namespace Unity.Tiny.Rendering
                 }
                 // touch it? needed?
                 bgfx.touch(pass.viewId);
-            });
+            }).Run();
         }
     }
 

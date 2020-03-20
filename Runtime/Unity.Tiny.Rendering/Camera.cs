@@ -31,7 +31,14 @@ namespace Unity.Tiny.Rendering
         Nothing,
 
         /// <summary>
-        ///  Clears the viewport with a solid background color.
+        ///  Only clear the depth buffer
+        ///  This is useuful for some multi layer effects, where one camera renders
+        ///  with its own depth range, and the a second camera renders at a closer depth range
+        /// </summary>
+        DepthOnly,
+
+        /// <summary>
+        ///  Clears the viewport with a solid background color, specified by 
         /// </summary>
         SolidColor
     }
@@ -39,15 +46,15 @@ namespace Unity.Tiny.Rendering
     // LocalToWorld
     public struct Camera : IComponentData
     {
-        public Color backgroundColor;
+        public Color backgroundColor; // always linear clear color
         public CameraClearFlags clearFlags;
         public Rect viewportRect;
         public float clipZNear;
         public float clipZFar;
-        public float fov;   // in degrees for perspective, direct scale factor in orthographic 
+        public float fov; // in degrees for perspective, direct scale factor in orthographic 
         public float aspect;
         public ProjectionMode mode;
-        public float depth;
+        public float depth; // stacking depth of this camera, NOT clear depth 
     }
     
     // Camera Settings 2D
@@ -267,7 +274,7 @@ namespace Unity.Tiny.Rendering
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     [UpdateBefore(typeof(UpdateCameraMatricesSystem))]
     [UpdateAfter(typeof(UpdateWorldBoundsSystem))]
-    public class UpdateCameraZFarSystem : ComponentSystem
+    public class UpdateCameraZFarSystem : SystemBase
     {
         private AABB TransformBounds (ref float4x4 tx, ref AABB b)
         {
@@ -281,8 +288,9 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate()
         {
-            Entities.ForEach((Entity e, ref CameraAutoZFarFromWorldBounds ab, ref Camera cam, ref LocalToWorld tx) => {
-                var wsBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>().m_wholeWorldBounds;
+            Dependency.Complete();
+            var wsBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>().m_wholeWorldBounds;
+            Entities.ForEach((Entity e, ref CameraAutoZFarFromWorldBounds ab, ref Camera cam, ref LocalToWorld tx) => {                
                 WorldBounds csBounds;
                 float4x4 camTx = math.inverse(tx.Value);
                 Culling.AxisAlignedToWorldBounds(ref camTx, ref wsBounds, out csBounds);
@@ -292,14 +300,14 @@ namespace Unity.Tiny.Rendering
                 if ( bbMax.z < ab.clipZFarMin ) bbMax.z = ab.clipZFarMin;
                 if ( bbMax.z > ab.clipZFarMax ) bbMax.z = ab.clipZFarMax;
                 cam.clipZFar = bbMax.z;
-            });
-        }        
+            }).Run();
+        }
     }
     
 
     [UnityEngine.ExecuteAlways]
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    public class UpdateCameraMatricesSystem : ComponentSystem
+    public class UpdateCameraMatricesSystem : SystemBase
     {
         public static float4x4 ProjectionMatrixFromCamera(ref Camera camera) 
         {
@@ -327,21 +335,18 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate() 
         {
+            TinyEnvironment env = World.TinyEnvironment();
+            DisplayInfo di = env.GetConfigData<DisplayInfo>();
             Entities.WithAll<CameraAutoAspectFromDisplay>().ForEach((ref Camera c) =>
             {                
-                TinyEnvironment env = World.TinyEnvironment();
-                DisplayInfo di = env.GetConfigData<DisplayInfo>();
                 c.aspect = (float)di.width / (float)di.height;
-            });
+            }).Run();
 
             // add camera matrices if needed 
-            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
-            Entities.WithNone<CameraMatrices>().WithAll<Camera>().ForEach((Entity e) =>
+            Entities.WithStructuralChanges().WithNone<CameraMatrices>().WithAll<Camera>().ForEach((Entity e) =>
             {
-                ecb.AddComponent<CameraMatrices>(e);
-            });
-            ecb.Playback(EntityManager);
-            ecb.Dispose();
+                EntityManager.AddComponent<CameraMatrices>(e);
+            }).Run();
 
             // update 
             Entities.ForEach((ref Camera c, ref LocalToWorld tx, ref CameraMatrices cm) =>
@@ -349,7 +354,7 @@ namespace Unity.Tiny.Rendering
                 cm.projection = ProjectionMatrixFromCamera(ref c);
                 cm.view = math.inverse(tx.Value);
                 ProjectionHelper.FrustumFromMatrices(cm.projection, cm.view, out cm.frustum);
-            });
+            }).Run();
         }
     }
 }
