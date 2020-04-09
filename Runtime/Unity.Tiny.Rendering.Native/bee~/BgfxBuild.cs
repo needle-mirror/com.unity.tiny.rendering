@@ -198,6 +198,7 @@ public class BgfxBuild
         }
 
         BgfxLib.Defines.Add("BGFX_CONFIG_MAX_BONES=4");
+        BgfxLib.Defines.Add(c => ((DotsRuntimeNativeProgramConfiguration)c).CSharpConfig.EnableProfiler, "BGFX_CONFIG_PROFILER=1");
 
         // At some point we need to stop using amalgamated, especially for small-size web builds
         BgfxLib.Sources.Add(c => !(c.Platform is MacOSXPlatform || c.Platform is IosPlatform), bgfx.Combine("src/amalgamated.cpp"));

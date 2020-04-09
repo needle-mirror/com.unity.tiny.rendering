@@ -8,7 +8,6 @@ Don't care about multiple instances, it's all a single one and static anyway
 */
 
 #include <baselibext.h>
-#include <Cpp/Time.h>
 #include <vector>
 #include <memory>
 #include <string.h>
@@ -169,7 +168,6 @@ typedef struct bgfx_callback_vtbl_s
     void(*capture_begin)(bgfx_callback_interface_t* _this, uint32_t _width, uint32_t _height, uint32_t _pitch, bgfx_texture_format_t _format, bool _yflip);
     void(*capture_end)(bgfx_callback_interface_t* _this);
     void(*capture_frame)(bgfx_callback_interface_t* _this, const void* _data, uint32_t _size);
-
 } bgfx_callback_vtbl_t;
 
 // must match c# 
@@ -193,7 +191,6 @@ struct BGFXScreenShotDesc {
 };
 
 struct BGFXCallbackEntry {
-    uint64_t time;
     union {
         BGFXCallbackEntryType callbacktype;
         int callbacktypei;
@@ -202,19 +199,20 @@ struct BGFXCallbackEntry {
     int additionalAllocatedDataLen;
 };
 
+typedef void(* ProfilerBeginCallback)(const char* name, int bytes);
+typedef void(* ProfilerEndCallback)();
+
+static ProfilerBeginCallback g_profilerBegin;
+static ProfilerEndCallback g_profilerEnd;
+
 static bgfx_callback_interface_s cb_interface;
 static bgfx_callback_vtbl_s cb_vtbl;
 static std::vector<char> logbuffer;
 static std::vector<BGFXCallbackEntry> calllog;
 static baselib::Lock mutex;
 
-static uint64_t getHighResTime() {
-    return (uint64_t)baselib::high_precision_clock::now_in_ticks();
-}
-
 static void addEntry(BGFXCallbackEntryType t, const char* mem, int memLen) {
     BGFXCallbackEntry e;
-    e.time = getHighResTime();
     e.callbacktype = t;
     e.additionalAllocatedDataLen = memLen;
     if (!mem || memLen <= 0) {
@@ -301,24 +299,21 @@ static void trace_vargs(bgfx_callback_interface_t* _this, const char* _filePath,
 }
 
 static void profiler_begin(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-	BaselibLock lock(mutex);
     _filePath = stripPath(_filePath);
     char buf[4096] = { 0 };
-    snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-    addEntryString(BGFXCallbackEntryType::ProfilerBegin, buf);
+    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+    g_profilerBegin(buf, bytes);
 }
 
 static void profiler_begin_literal(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-	BaselibLock lock(mutex);
     _filePath = stripPath(_filePath);
     char buf[4096] = { 0 };
-    snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-    addEntryString(BGFXCallbackEntryType::ProfilerBeginLiteral, buf);
+    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+    g_profilerBegin(buf, bytes);
 }
 
 static void profiler_end(bgfx_callback_interface_t* _this) {
-	BaselibLock lock(mutex);
-    addEntryString(BGFXCallbackEntryType::ProfilerEnd, 0);
+    g_profilerEnd();
 }
 
 static uint32_t cache_read_size(bgfx_callback_interface_t* _this, uint64_t _id) {
@@ -378,7 +373,7 @@ static void capture_frame(bgfx_callback_interface_t* _this, const void* _data, u
 }
 
 // called from c#, main thread
-DOTS_EXPORT(void*) BGFXCB_Init() {
+DOTS_EXPORT(void*) BGFXCB_Init(ProfilerBeginCallback funcBegin, ProfilerEndCallback funcEnd) {
 	BaselibLock lock(mutex);
     cb_vtbl.fatal = &fatal;
     cb_vtbl.trace_vargs = &trace_vargs;
@@ -393,6 +388,10 @@ DOTS_EXPORT(void*) BGFXCB_Init() {
     cb_vtbl.capture_end = &capture_end;
     cb_vtbl.capture_frame = &capture_frame;
     cb_interface.vtbl = &cb_vtbl;
+
+    g_profilerBegin = funcBegin;
+    g_profilerEnd = funcEnd;
+
     return &cb_interface;
 }
 
@@ -420,4 +419,3 @@ DOTS_EXPORT(void) BGFXCB_UnlockAndClear() {
     logbuffer.clear();
     mutex.Release();
 }
-

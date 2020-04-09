@@ -19,7 +19,6 @@ namespace Bgfx
 
         public struct CallbackEntry
         {
-            public ulong time;
             public CallbackType callbacktype;
             public int additionalAllocatedDataStart;
             public int additionalAllocatedDataSize;
@@ -34,8 +33,11 @@ namespace Bgfx
             public int yflip;
         }
 
+        public unsafe delegate void ProfilerBeginCallback(byte* name, int bytes);
+        public delegate void ProfilerEndCallback();
+
         [DllImport("lib_unity_tiny_rendering_native.dll", EntryPoint = "BGFXCB_Init", CallingConvention = CallingConvention.StdCall)]
-        public static extern unsafe IntPtr CallbacksInit();
+        public static extern unsafe IntPtr CallbacksInit(IntPtr funcBegin, IntPtr funcEnd);
 
         [DllImport("lib_unity_tiny_rendering_native.dll", EntryPoint = "BGFXCB_DeInit", CallingConvention = CallingConvention.StdCall)]
         public static extern void CallbacksDeInit();

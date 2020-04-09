@@ -1,21 +1,21 @@
 ﻿using Unity.Build;
-using PropertyAttribute = Unity.Properties.PropertyAttribute;
+using Unity.Properties;
 
 namespace Unity.Tiny.Rendering.Settings
 {
     //TODO Need to find a way to retrieve project settings from runtime component without bringing a dependency to runtime packages
     public class TinyRenderingSettings : IBuildComponent
     {
-        [Property]
+        [CreateProperty]
         public int ResolutionX = 1280; //TODO: switch to VectorInt when there will be a Vector2Int Built-in inspector
 
-        [Property]
+        [CreateProperty]
         public int ResolutionY = 720;
 
-        [Property]
+        [CreateProperty]
         public bool AutoResizeFrame = true;
 
-        [Property]
+        [CreateProperty]
         public bool DisableVsync = false;
     }
 }

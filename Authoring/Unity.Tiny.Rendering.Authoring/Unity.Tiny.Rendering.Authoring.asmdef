@@ -13,6 +13,7 @@
         "Unity.Tiny.Core",
         "Unity.Tiny.Rendering",
         "Unity.Tiny.Rendering.Native",
+        "Unity.Tiny.Particles",
         "Unity.Transforms",
         "Unity.Assertions",
         "Unity.Burst",

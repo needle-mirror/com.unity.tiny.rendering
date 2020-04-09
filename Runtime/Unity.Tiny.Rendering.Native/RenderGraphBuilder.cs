@@ -742,9 +742,9 @@ namespace Unity.Tiny.Rendering
                 OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
         }
 
-        protected override void OnStartRunning()
+        protected override void OnCreate()
         {
-            base.OnStartRunning();
+            base.OnCreate();
 
             m_buildGroups = new NativeHashMap<BuildGroup, Entity>(16, Allocator.Persistent);
         }

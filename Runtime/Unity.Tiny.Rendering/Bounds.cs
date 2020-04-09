@@ -456,7 +456,6 @@ namespace Unity.Tiny.Rendering
                         Center = (bbMin + bbMax) * 0.5f,
                         Extents = (bbMax - bbMin) * 0.5f
                     }});
-                Assert.IsTrue(sphere.w > 0.0f);
                 chunks[i].SetChunkComponentData<ChunkWorldBoundingSphere>(chunkBoundingSphereType, new ChunkWorldBoundingSphere {
                     Value = new WorldBoundingSphere {
                         position = sphere.xyz,

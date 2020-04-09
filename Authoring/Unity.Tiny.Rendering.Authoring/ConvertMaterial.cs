@@ -134,6 +134,44 @@ namespace Unity.TinyConversion
             });
         }
 
+        // For now particles just use LitMaterial
+        private void ConvertParticleMaterial(Entity entity, Material uMaterial)
+        {
+            //Do the conversion
+            var texAlbedo = GetTextureEntity(uMaterial, "_BaseMap");
+            var texMetal = GetTextureEntity(uMaterial, "_MetallicGlossMap");
+            Vector2 textScale = uMaterial.GetTextureScale("_BaseMap");
+            Vector2 textTrans = uMaterial.GetTextureOffset("_BaseMap");
+
+            //Check if _Emission shader keyword has been enabled for that material
+            float3 emissionColor = new float3(0.0f);
+            if (uMaterial.IsKeywordEnabled("_EMISSION"))
+            {
+                UnityEngine.Color uEmissionColor = uMaterial.GetColor("_EmissionColor").linear;
+                emissionColor = new float3(uEmissionColor.r, uEmissionColor.g, uEmissionColor.b);
+            }
+
+            UnityEngine.Color baseColor = uMaterial.GetColor("_BaseColor").linear;
+            DstEntityManager.AddComponentData<LitMaterial>(entity, new LitMaterial()
+            {
+                texAlbedoOpacity = texAlbedo,
+                constAlbedo = new float3(baseColor.r, baseColor.g, baseColor.b),
+                constOpacity = baseColor.a,
+                constEmissive = emissionColor,
+                texMetal = texMetal,
+                texNormal = GetTextureEntity(uMaterial, "_BumpMap"),
+                texEmissive = GetTextureEntity(uMaterial, "_EmissionMap"),
+                constMetal = uMaterial.GetFloat("_Metallic"),
+                constSmoothness = uMaterial.GetFloat("_Smoothness"),
+                normalMapZScale = uMaterial.GetFloat("_BumpScale"),
+                twoSided = IsTwoSided(uMaterial),
+                transparent = uMaterial.GetInt("_Surface") == 1,
+                smoothnessAlbedoAlpha = ContainsShaderKeyword(uMaterial, "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A"),
+                scale = new float2(textScale[0], textScale[1]),
+                offset = new float2(textTrans[0], 1 - textTrans[1]) // Invert the offset as well
+            });
+        }
+
         public override bool ShouldRunConversionSystem()
         {
             //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
@@ -146,6 +184,7 @@ namespace Unity.TinyConversion
         {
             Unlit,
             Lit,
+            Particle,
             Other,
             Unsupported
         }
@@ -158,6 +197,8 @@ namespace Unity.TinyConversion
                     return SupportedMaterialType.Unlit;
                 case "Universal Render Pipeline/Lit":
                     return SupportedMaterialType.Lit;
+                case "Universal Render Pipeline/Particles/Lit":
+                    return SupportedMaterialType.Particle;
                 case "Sprites/Default": // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion
                 case "Universal Render Pipeline/2D/Sprite-Lit-Default":
                     return SupportedMaterialType.Other;
@@ -178,6 +219,9 @@ namespace Unity.TinyConversion
                         break;
                     case SupportedMaterialType.Lit:
                         ConvertLitMaterial(entity, uMaterial);
+                        break;
+                    case SupportedMaterialType.Particle:
+                        ConvertParticleMaterial(entity, uMaterial);
                         break;
                     case SupportedMaterialType.Other:
                         // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion

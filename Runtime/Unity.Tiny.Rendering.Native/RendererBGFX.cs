@@ -1,3 +1,7 @@
+#if ENABLE_PROFILER && UNITY_DOTSPLAYER
+#define TINY_BGFX_PROFILER
+#endif
+
 using System;
 using Unity.Mathematics;
 using Unity.Entities;
@@ -19,6 +23,9 @@ using Unity.Jobs;
 #if UNITY_MACOSX
 using Unity.Tiny.GLFW;
 #endif
+#if TINY_BGFX_PROFILER
+using Unity.Development;
+#endif
 
 [assembly: InternalsVisibleTo("Unity.Tiny.RendererExtras")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.Tests")]
@@ -31,6 +38,18 @@ using Unity.Tiny.GLFW;
 
 namespace Unity.Tiny.Rendering
 {
+    internal class MonoPInvokeCallbackAttribute : Attribute
+    {
+    }
+
+#if UNITY_WEBGL
+    static class HTMLNativeCalls
+    {
+        [DllImport("lib_unity_tiny_web", EntryPoint = "js_html_validateWebGLContextFeatures")]
+        public static extern void validateWebGLContextFeatures(bool requireSrgb);
+    }
+#endif
+
     // use this interface to make bgfx things public to other packages, like android that
     // wants re-init functionality 
     // (except for tests)
@@ -230,13 +249,13 @@ namespace Unity.Tiny.Rendering
 
     internal unsafe struct RendererBGFXInstance
     {
-        public bgfx.VertexLayout *m_vertexBufferDeclPtr; // base pointer to all decls, needs to be allocated before init
+        public bgfx.VertexLayout* m_vertexBufferDeclPtr; // base pointer to all decls, needs to be allocated before init
         public bgfx.VertexLayoutHandle m_simpleVertexBufferDeclHandle;
-        public bgfx.VertexLayout *m_simpleVertexBufferDecl;
+        public bgfx.VertexLayout* m_simpleVertexBufferDecl;
         public bgfx.VertexLayoutHandle m_litVertexBufferDeclHandle;
-        public bgfx.VertexLayout *m_litVertexBufferDecl;
+        public bgfx.VertexLayout* m_litVertexBufferDecl;
         public bgfx.VertexLayoutHandle m_posOnlyVertexBufferDeclHandle;
-        public bgfx.VertexLayout *m_posOnlyVertexBufferDecl;
+        public bgfx.VertexLayout* m_posOnlyVertexBufferDecl;
 
         public bgfx.TextureHandle m_whiteTexture;
         public bgfx.TextureHandle m_greyTexture;
@@ -254,7 +273,7 @@ namespace Unity.Tiny.Rendering
         public MeshBGFX m_quadMesh;
         public AABB m_quadMeshBounds;
         public ExternalBlitES3Shader m_externalBlitES3Shader;
-        
+
         public bool m_initialized;
         public bgfx.RendererType m_rendererType;
 
@@ -265,7 +284,7 @@ namespace Unity.Tiny.Rendering
         public ColorSpace m_colorSpace;
 
         public int m_maxPerThreadData;
-        public PerThreadDataBGFX *m_perThreadData; // base pointer to all decls, needs to be allocated before init
+        public PerThreadDataBGFX* m_perThreadData; // base pointer to all decls, needs to be allocated before init
 
         public uint m_persistentFlags;
         public uint m_frameFlags;
@@ -277,6 +296,42 @@ namespace Unity.Tiny.Rendering
         public bool m_blitPrimarySRGB;
 
         public bgfx.PlatformData m_platformData;
+#if TINY_BGFX_PROFILER
+        private Profiling.ProfilerMarker m_markerFrame;
+
+        private static IntPtr m_mainThreadId = Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId();
+
+        [MonoPInvokeCallback]
+        private static unsafe void ProfilerBeginCallbackFunc(byte* name, int bytes)
+        {
+            // @@todo - API thread (main thread) only until multithreaded support lands in profiler/player connection
+            if (Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId() == m_mainThreadId)
+            {
+                IntPtr marker = (IntPtr)Development.Profiler.MarkerGetOrCreate(Unity.Profiling.LowLevel.Unsafe.ProfilerUnsafeUtility.CategoryRender, name, bytes, (ushort)Profiling.LowLevel.MarkerFlags.Script);
+                uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
+
+                ProfilerProtocolThread.SendBeginSample(markerId, Profiler.GetProfilerTime());
+                UnityEngine.Profiling.Profiler.beginStack[UnityEngine.Profiling.Profiler.stackPos++] = marker;
+            }
+        }
+
+        [MonoPInvokeCallback]
+        private static unsafe void ProfilerEndCallbackFunc()
+        {
+            // @@todo - API thread (main thread) only until multithreaded support lands in profiler/player connection
+            if (Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId() == m_mainThreadId)
+            {
+                UnityEngine.Profiling.Profiler.stackPos--;
+                IntPtr marker = UnityEngine.Profiling.Profiler.beginStack[UnityEngine.Profiling.Profiler.stackPos];
+                uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
+                ProfilerProtocolThread.SendEndSample(markerId, Profiler.GetProfilerTime());
+            }
+        }
+
+        private static bgfx.ProfilerBeginCallback m_profilerBeginCallback = ProfilerBeginCallbackFunc;
+
+        private static bgfx.ProfilerEndCallback m_profilerEndCallback = ProfilerEndCallbackFunc;
+#endif
 
         public void SetFlagThisFrame(bgfx.DebugFlags flag)
         {
@@ -340,11 +395,18 @@ namespace Unity.Tiny.Rendering
             var windowSystem = world.GetExistingSystem<WindowSystem>();
 
             var rendererType = bgfx.RendererType.Count; // Auto
+
+#if TINY_BGFX_PROFILER
+            m_markerFrame = new Profiling.ProfilerMarker("RendererBGFXInstance.Frame");
+#endif
+
 #if RENDERING_FORCE_OPENGL
             rendererType = bgfx.RendererType.OpenGL;
 #endif
 
             m_platformData.nwh = windowSystem.GetPlatformWindowHandle().ToPointer();
+
+            
 
 #if UNITY_MACOSX
             // Mac takes a different path -- we need to create the actual CAMetalLayer
@@ -380,13 +442,25 @@ namespace Unity.Tiny.Rendering
             fixed (bgfx.PlatformData*pd = &m_platformData)
                 bgfx.set_platform_data(pd);
 
+#if TINY_BGFX_PROFILER
+            IntPtr mainThreadId = Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId();
+#endif
+
             bgfx.Init init = new bgfx.Init();
-            init.callback = bgfx.CallbacksInit();
+#if TINY_BGFX_PROFILER
+            init.profile = 1;
+            init.callback = bgfx.CallbacksInit(Marshal.GetFunctionPointerForDelegate(m_profilerBeginCallback), Marshal.GetFunctionPointerForDelegate(m_profilerEndCallback));
+#else
+            init.profile = 0;
+            init.callback = bgfx.CallbacksInit(IntPtr.Zero, IntPtr.Zero);
+#endif
+
 #if DEBUG
             init.debug = 1;
 #else
             init.debug = 0;
 #endif
+
             m_maxPerThreadData = JobsUtility.JobWorkerCount; // could be 0 in single threaded mode
             if (m_maxPerThreadData == 0) // main thread only mode 
                 m_maxPerThreadData = 1;
@@ -522,24 +596,37 @@ namespace Unity.Tiny.Rendering
                 m_blitPrimarySRGB = false;
             }
 
+#if UNITY_WEBGL
+            // Verify that the WebGL context that was created is appropriate to run this content.
+            HTMLNativeCalls.validateWebGLContextFeatures(m_allowSRGBTextures);
+#endif
+
             m_initialized = true;
         }
 
-        public void Frame() { 
-            if ( !m_initialized )
+        public void Frame()
+        {
+            if (!m_initialized)
                 return;
-            for (int i = 0; i < m_maxPerThreadData; i++) {
-                if (m_perThreadData[i].encoder != null) {
-                    bgfx.encoder_end(m_perThreadData[i].encoder);
-                    m_perThreadData[i].encoder = null;
+#if TINY_BGFX_PROFILER
+            using (m_markerFrame.Auto())
+#endif
+            {
+                for (int i = 0; i < m_maxPerThreadData; i++)
+                {
+                    if (m_perThreadData[i].encoder != null)
+                    {
+                        bgfx.encoder_end(m_perThreadData[i].encoder);
+                        m_perThreadData[i].encoder = null;
+                    }
                 }
+
+                // go bgfx!
+                bgfx.frame(false);
+
+                m_frameFlags = 0;
+                bgfx.set_debug(m_persistentFlags);
             }
-
-            // go bgfx!
-            bgfx.frame(false);
-
-            m_frameFlags = 0;
-            bgfx.set_debug(m_persistentFlags);
         }
 
         public void FlushViewSpaceCache()
@@ -613,6 +700,14 @@ namespace Unity.Tiny.Rendering
         private RendererBGFXInstance *m_instancePtr;
         private NativeArray<PerThreadDataBGFX> m_allocPerThreadData;
         private NativeArray<bgfx.VertexLayout> m_allocVertexLayoutPool;
+
+#if TINY_BGFX_PROFILER
+        private Profiling.ProfilerMarker m_markerUpdate = new Profiling.ProfilerMarker("RendererBGFXSystem.OnUpdate");
+        private Profiling.ProfilerMarker m_markerUpdateUpload = new Profiling.ProfilerMarker("Upload data");
+        private Profiling.ProfilerMarker m_markerUpdateCallbacks = new Profiling.ProfilerMarker("Process callbacks");
+        private Profiling.ProfilerMarker m_markerUpdateReinit = new Profiling.ProfilerMarker("Re-initialize");
+        private Profiling.ProfilerMarker m_markerUpdateJobs = new Profiling.ProfilerMarker("Complete job dependencies");
+#endif
 
         public int m_screenShotWidth;
         public int m_screenShotHeight;
@@ -777,10 +872,11 @@ namespace Unity.Tiny.Rendering
             bgfx.CallbackEntry* callbackLog = null; 
             int n = bgfx.CallbacksLock(&callbackMem, &callbackLog);
             string s;
-            for ( int i=0; i<n; i++ )
+
+            for (int i = 0; i < n; i++)
             {
                 bgfx.CallbackEntry e = callbackLog[i];
-                switch ( e.callbacktype )
+                switch (e.callbacktype)
                 {
                     case bgfx.CallbackType.Fatal:
                         s = StringFromCString(callbackMem + e.additionalAllocatedDataStart);
@@ -792,9 +888,9 @@ namespace Unity.Tiny.Rendering
                         RenderDebug.LogAlways(s);
                         break;
                     case bgfx.CallbackType.ScreenShotDesc:
-                        bgfx.ScreenShotDesc* desc = (bgfx.ScreenShotDesc * )(callbackMem + e.additionalAllocatedDataStart);
-                        RenderDebug.LogFormatAlways("Screenshot captured: {0}*{1} {2} pitch={3}", desc->width, desc->height, desc->yflip!=0? "flipped" : "", desc->pitch);
-                        Assert.IsTrue(desc->width*4 == desc->pitch);
+                        bgfx.ScreenShotDesc* desc = (bgfx.ScreenShotDesc*)(callbackMem + e.additionalAllocatedDataStart);
+                        RenderDebug.LogFormatAlways("Screenshot captured: {0}*{1} {2} pitch={3}", desc->width, desc->height, desc->yflip != 0 ? "flipped" : "", desc->pitch);
+                        Assert.IsTrue(desc->width * 4 == desc->pitch);
                         Assert.IsTrue(desc->width * desc->height * 4 == desc->size);
                         m_screenShotWidth = desc->width;
                         m_screenShotHeight = desc->height;
@@ -814,34 +910,61 @@ namespace Unity.Tiny.Rendering
                         break;
                 }
             }
+
             bgfx.CallbacksUnlockAndClear();
         }
 
         protected override void OnUpdate()
         {
-            Dependency.Complete();
-            if (!IsInitialized()) { 
-                if (m_instancePtr!=null && m_instancePtr->m_resume)
+#if TINY_BGFX_PROFILER
+            using (m_markerUpdate.Auto())
+#endif
+            {
+#if TINY_BGFX_PROFILER
+                using (m_markerUpdateJobs.Auto())
+#endif
                 {
-                    Init();
-                    ReloadAllImages();
-                    m_instancePtr->m_resume = false;
+                    Dependency.Complete();
                 }
-                else
+                if (!IsInitialized())
                 {
-                    return;
+                    if (m_instancePtr != null && m_instancePtr->m_resume)
+                    {
+#if TINY_BGFX_PROFILER
+                        using (m_markerUpdateReinit.Auto())
+#endif
+                        {
+                            Init();
+                            ReloadAllImages();
+                            m_instancePtr->m_resume = false;
+                        }
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+
+                var di = GetSingleton<DisplayInfo>();
+                var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
+                m_instancePtr->ResetIfNeeded(di, nwh);
+                m_instancePtr->FlushViewSpaceCache();
+#if TINY_BGFX_PROFILER
+                using (m_markerUpdateUpload.Auto())
+#endif
+                {
+                    UploadTextures();
+                    UploadMeshes();
+                    UpdateRTT();
+                    UpdateExternalTextures();
+                }
+#if TINY_BGFX_PROFILER
+                using (m_markerUpdateCallbacks.Auto())
+#endif
+                {
+                    HandleCallbacks();
                 }
             }
-
-            var di = GetSingleton<DisplayInfo>();
-            var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
-            m_instancePtr->ResetIfNeeded(di, nwh);
-            m_instancePtr->FlushViewSpaceCache();
-            UploadTextures();
-            UploadMeshes();
-            UpdateRTT();
-            UpdateExternalTextures();
-            HandleCallbacks();
         }
 
         private void UploadMeshes()
@@ -1180,14 +1303,14 @@ namespace Unity.Tiny.Rendering
     {
         private void CheckState()
         {
-#if DEBUG 
+#if DEBUG
             bgfx.dbg_text_clear(0, false);
 #endif
             int nprim = GetEntityQuery(ComponentType.ReadOnly<RenderNodePrimarySurface>()).CalculateEntityCount();
             int ncam = GetEntityQuery(ComponentType.ReadOnly<Camera>()).CalculateEntityCount();
             if (nprim == 0 || ncam == 0) {
                 uint clearcolor = 0;
-#if DEBUG 
+#if DEBUG
                 unsafe { 
                     var sys = World.GetExistingSystem<RendererBGFXSystem>().InstancePointer();
                     sys->SetFlagThisFrame(bgfx.DebugFlags.Text);

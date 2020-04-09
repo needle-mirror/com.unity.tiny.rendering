@@ -711,6 +711,32 @@ namespace Unity.Tiny.Rendering
             builder.Dispose();
         }
 
+        static public void FillPlaneMeshLit(NativeArray<LitVertex> destVertices, NativeArray<ushort> destIndices, float3 org, float3 du, float3 dv, out AABB bb)
+        {
+            destVertices[0] = new LitVertex { Position = org, TexCoord0 = new float2(0, 0) };
+            destVertices[1] = new LitVertex { Position = org + du, TexCoord0 = new float2(1, 0) };
+            destVertices[2] = new LitVertex { Position = org + du + dv, TexCoord0 = new float2(1, 1) };
+            destVertices[3] = new LitVertex { Position = org + dv, TexCoord0 = new float2(0, 1) };
+            destIndices[0] = 0; destIndices[1] = 2; destIndices[2] = 1;
+            destIndices[3] = 2; destIndices[4] = 0; destIndices[5] = 3;
+            bb = ComputeBounds(destVertices);
+        }
+
+        static public void CreatePlaneLit(float3 org, float3 du, float3 dv, out MeshBounds mb, out LitMeshRenderData lmrd)
+        {
+            var builder = new BlobBuilder(Allocator.Temp);
+            ref var root = ref builder.ConstructRoot<LitMeshData>();
+            var vertices = builder.Allocate(ref root.Vertices, 4).AsNativeArray();
+            var indices = builder.Allocate(ref root.Indices, 6).AsNativeArray();
+            FillPlaneMeshLit(vertices, indices, org, du, dv, out mb.Bounds);
+            ComputeNormals(vertices, indices);
+            ComputeTangentAndBinormal(vertices, indices);
+            SetAlbedoColor(vertices, new float4(1));
+            SetMetalSmoothness(vertices, new float2(1));
+            lmrd.Mesh = builder.CreateBlobAssetReference<LitMeshData>(Allocator.Persistent);
+            builder.Dispose();
+        }
+
         public static void SetAlbedoColor ( NativeArray<LitVertex> dest, float4 albedo_opacity)
         {
             unsafe { 
