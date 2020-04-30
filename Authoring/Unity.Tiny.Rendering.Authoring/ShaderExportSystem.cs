@@ -29,9 +29,9 @@ namespace Unity.TinyConversion
                 {
                     string fsFileName = GetShaderFileName(shaderRootPath, prefix, shaderName, sl);
                     var bytes = File.ReadAllBytes(fsFileName);
-                    fixed (byte* data = bytes)
+                    fixed(byte* data = bytes)
                     {
-                        byte* dest = (byte*) allocator.Allocate(ref root.DataForBackend(sl), bytes.Length)
+                        byte* dest = (byte*)allocator.Allocate(ref root.DataForBackend(sl), bytes.Length)
                             .GetUnsafePtr();
                         UnsafeUtility.MemCpy(dest, data, bytes.Length);
                     }

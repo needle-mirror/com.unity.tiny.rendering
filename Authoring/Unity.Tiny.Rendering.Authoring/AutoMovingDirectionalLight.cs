@@ -1,29 +1,33 @@
-﻿using System;
+using System;
 using UnityEngine;
 using Unity.Entities;
-using Unity.Entities.Runtime.Build;
 
 namespace Unity.Tiny.Authoring
 {
     [AddComponentMenu("Tiny/AutoMovingDirectionalLight")]
-    public class AutoMovingDirectionalLight : MonoBehaviour, IConvertGameObjectToEntity
+    public class AutoMovingDirectionalLight : MonoBehaviour
     {
         public bool autoBounds = true;
         public GameObject mainCamera;
+    }
 
-        public void Convert(Entity entity, EntityManager dstManager, GameObjectConversionSystem conversionSystem)
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
+    public class AutoMovingDirectionalLightSystem : GameObjectConversionSystem
+    {
+        protected override void OnUpdate()
         {
-            if (!conversionSystem.TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return;
-
-            if (mainCamera == null)
-                throw new ArgumentException($"No camera found in the AutoMovingDirectionalLight authoring component of the gameobject: {name}. Please assign one");
-
-            var entityCamera = conversionSystem.GetPrimaryEntity(mainCamera);
-            dstManager.AddComponentData(entity, new Tiny.Rendering.AutoMovingDirectionalLight()
+            Entities.ForEach((AutoMovingDirectionalLight uLight) =>
             {
-                autoBounds = autoBounds,
-                clipToCamera = entityCamera
+                if (uLight.mainCamera == null)
+                    throw new ArgumentException($"No camera found in the AutoMovingDirectionalLight authoring component of the gameobject: {uLight.name}. Please assign one");
+
+                var entity = GetPrimaryEntity(uLight);
+                var entityCamera = GetPrimaryEntity(uLight.mainCamera);
+                DstEntityManager.AddComponentData(entity, new Tiny.Rendering.AutoMovingDirectionalLight()
+                {
+                    autoBounds = uLight.autoBounds,
+                    clipToCamera = entityCamera
+                });
             });
         }
     }

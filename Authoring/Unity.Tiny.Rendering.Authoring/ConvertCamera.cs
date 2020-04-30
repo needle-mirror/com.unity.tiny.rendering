@@ -48,7 +48,7 @@ namespace Unity.TinyConversion
                 DstEntityManager.AddComponentData(entity, camera);
 
                 // For CameraSettings2D
-                float3 customSortAxisSetting = new float3(0,0,1.0f);
+                float3 customSortAxisSetting = new float3(0, 0, 1.0f);
                 if (UnityEngine.Rendering.GraphicsSettings.transparencySortMode == UnityEngine.TransparencySortMode.CustomAxis)
                     customSortAxisSetting = UnityEngine.Rendering.GraphicsSettings.transparencySortAxis;
                 DstEntityManager.AddComponentData(entity, new Unity.Tiny.Rendering.CameraSettings2D

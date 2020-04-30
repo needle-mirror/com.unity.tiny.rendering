@@ -22,8 +22,8 @@ namespace Unity.Tiny.Rendering
     ///  List of options for clearing a camera's viewport before rendering.
     ///  Used by the Camera2D component.
     /// </summary>
-    public enum CameraClearFlags {
-
+    public enum CameraClearFlags
+    {
         /// <summary>
         ///  Do not clear. Use this when the camera renders to the entire screen,
         ///  and in situations where multiple cameras render to the same screen area.
@@ -38,7 +38,7 @@ namespace Unity.Tiny.Rendering
         DepthOnly,
 
         /// <summary>
-        ///  Clears the viewport with a solid background color, specified by 
+        ///  Clears the viewport with a solid background color, specified by
         /// </summary>
         SolidColor
     }
@@ -51,26 +51,26 @@ namespace Unity.Tiny.Rendering
         public Rect viewportRect;
         public float clipZNear;
         public float clipZFar;
-        public float fov; // in degrees for perspective, direct scale factor in orthographic 
+        public float fov; // in degrees for perspective, direct scale factor in orthographic
         public float aspect;
         public ProjectionMode mode;
-        public float depth; // stacking depth of this camera, NOT clear depth 
+        public float depth; // stacking depth of this camera, NOT clear depth
     }
-    
+
     // Camera Settings 2D
     public struct CameraSettings2D : IComponentData
     {
         public float3 customSortAxis;    // For Custom Axis Sort.
     }
 
-    // tag camera to auto set z range 
+    // tag camera to auto set z range
     public struct CameraAutoZFarFromWorldBounds : IComponentData // next to camera
     {
         public float clipZFarMax;   // max far range
         public float clipZFarMin;   // minimum far range
     }
 
-    // tag camera to auto update aspect to primary display 
+    // tag camera to auto update aspect to primary display
     public struct CameraAutoAspectFromDisplay : IComponentData // next to camera
     {
     }
@@ -140,12 +140,12 @@ namespace Unity.Tiny.Rendering
         }
     }
 
-    public static class ProjectionHelper 
+    public static class ProjectionHelper
     {
         public static float4x4 ProjectionMatrixPerspective(float n, float f, float fovDeg, float aspect)
         {
             var fov = math.radians(fovDeg);
-            var t = n * math.tan(fov *.5f);
+            var t = n * math.tan(fov * .5f);
             var b = -t;
             var l = -t * aspect;
             var r = t * aspect;
@@ -191,7 +191,7 @@ namespace Unity.Tiny.Rendering
         public static float4 NormalizePlane(float4 p)
         {
             float l = math.length(p.xyz);
-            return p * (1.0f/l); 
+            return p * (1.0f / l);
         }
 
         // compute world space frustum
@@ -209,22 +209,27 @@ namespace Unity.Tiny.Rendering
             dest.SetPlane(5, NormalizePlane(vp.c3 - vp.c2));
         }
 
-        public static void FrustumFromAABB(AABB b, out Frustum dest) {
+        public static void FrustumFromAABB(AABB b, out Frustum dest)
+        {
             dest = default;
             dest.PlanesCount = 6;
             float3 bMin = b.Min;
             float3 bMax = b.Max;
-            for (int i = 0; i < 6; i++) {
+            for (int i = 0; i < 6; i++)
+            {
                 float3 n = new float3(0.0f);
-                float3 p; 
-                if ( (i&1) == 0 ) {
+                float3 p;
+                if ((i & 1) == 0)
+                {
                     n[i >> 1] = 1.0f;
                     p = bMax;
-                } else {
+                }
+                else
+                {
                     n[i >> 1] = -1.0f;
                     p = bMin;
                 }
-                dest.SetPlane(i, InitPlane(p,n));
+                dest.SetPlane(i, InitPlane(p, n));
             }
         }
 
@@ -232,13 +237,14 @@ namespace Unity.Tiny.Rendering
         {
             dest = default;
             dest.PlanesCount = 6;
-            for (int i = 0; i < 6; i++) {
+            for (int i = 0; i < 6; i++)
+            {
                 float3 pp = pos;
                 float s = (i & 1) == 0 ? 1.0f : -1.0f;
                 pp[i >> 1] += size * s;
                 float3 n = new float3(0.0f);
                 n[i >> 1] = s;
-                dest.SetPlane(i, InitPlane(pp,n));
+                dest.SetPlane(i, InitPlane(pp, n));
             }
         }
 
@@ -258,7 +264,7 @@ namespace Unity.Tiny.Rendering
 
         static public float3 FrustumVertexOrtho(int idx, float size, float near, float far)
         {
-            float3 r = new float3(size,size,0.0f);
+            float3 r = new float3(size, size, 0.0f);
             if (idx < 4) { r.z = near; } else { r.z = far; }
             switch (idx & 3)
             {
@@ -276,13 +282,13 @@ namespace Unity.Tiny.Rendering
     [UpdateAfter(typeof(UpdateWorldBoundsSystem))]
     public class UpdateCameraZFarSystem : SystemBase
     {
-        private AABB TransformBounds (ref float4x4 tx, ref AABB b)
+        private AABB TransformBounds(in float4x4 tx, in AABB b)
         {
             WorldBounds wBounds;
-            Culling.AxisAlignedToWorldBounds(ref tx, ref b, out wBounds);
-            // now turn those bounds back to axis aligned.. 
+            Culling.AxisAlignedToWorldBounds(in tx, in b, out wBounds);
+            // now turn those bounds back to axis aligned..
             AABB aab;
-            Culling.WorldBoundsToAxisAligned(ref wBounds, out aab);
+            Culling.WorldBoundsToAxisAligned(in wBounds, out aab);
             return aab;
         }
 
@@ -290,26 +296,24 @@ namespace Unity.Tiny.Rendering
         {
             Dependency.Complete();
             var wsBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>().m_wholeWorldBounds;
-            Entities.ForEach((Entity e, ref CameraAutoZFarFromWorldBounds ab, ref Camera cam, ref LocalToWorld tx) => {                
+            Entities.ForEach((Entity e, ref CameraAutoZFarFromWorldBounds ab, ref Camera cam, ref LocalToWorld tx) => {
                 WorldBounds csBounds;
                 float4x4 camTx = math.inverse(tx.Value);
-                Culling.AxisAlignedToWorldBounds(ref camTx, ref wsBounds, out csBounds);
+                Culling.AxisAlignedToWorldBounds(in camTx, in wsBounds, out csBounds);
                 float3 bbMin = csBounds.c000;
                 float3 bbMax = bbMin;
                 Culling.GrowBounds(ref bbMin, ref bbMax, in csBounds);
-                if ( bbMax.z < ab.clipZFarMin ) bbMax.z = ab.clipZFarMin;
-                if ( bbMax.z > ab.clipZFarMax ) bbMax.z = ab.clipZFarMax;
+                if (bbMax.z < ab.clipZFarMin) bbMax.z = ab.clipZFarMin;
+                if (bbMax.z > ab.clipZFarMax) bbMax.z = ab.clipZFarMax;
                 cam.clipZFar = bbMax.z;
             }).Run();
         }
     }
-    
 
-    [UnityEngine.ExecuteAlways]
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     public class UpdateCameraMatricesSystem : SystemBase
     {
-        public static float4x4 ProjectionMatrixFromCamera(ref Camera camera) 
+        public static float4x4 ProjectionMatrixFromCamera(ref Camera camera)
         {
             if (camera.mode == ProjectionMode.Orthographic)
                 return ProjectionHelper.ProjectionMatrixOrtho(camera.clipZNear, camera.clipZFar, camera.fov, camera.aspect);
@@ -317,14 +321,17 @@ namespace Unity.Tiny.Rendering
                 return ProjectionHelper.ProjectionMatrixPerspective(camera.clipZNear, camera.clipZFar, camera.fov, camera.aspect);
         }
 
-        // bounds returned here are not a box for perspective cameras, but the vertices of the frustum 
+        // bounds returned here are not a box for perspective cameras, but the vertices of the frustum
         public static WorldBounds BoundsFromCamera(in Camera camera)
         {
             WorldBounds r = default;
-            if (camera.mode == ProjectionMode.Orthographic) {
+            if (camera.mode == ProjectionMode.Orthographic)
+            {
                 for (int i = 0; i < 8; i++)
                     r.SetVertex(i, ProjectionHelper.FrustumVertexOrtho(i, camera.fov, camera.clipZNear, camera.clipZFar));
-            } else { 
+            }
+            else
+            {
                 float h = math.tan(math.radians(camera.fov) * .5f);
                 float w = h * camera.aspect;
                 for (int i = 0; i < 8; i++)
@@ -333,22 +340,22 @@ namespace Unity.Tiny.Rendering
             return r;
         }
 
-        protected override void OnUpdate() 
+        protected override void OnUpdate()
         {
             TinyEnvironment env = World.TinyEnvironment();
             DisplayInfo di = env.GetConfigData<DisplayInfo>();
             Entities.WithAll<CameraAutoAspectFromDisplay>().ForEach((ref Camera c) =>
-            {                
+            {
                 c.aspect = (float)di.width / (float)di.height;
             }).Run();
 
-            // add camera matrices if needed 
+            // add camera matrices if needed
             Entities.WithStructuralChanges().WithNone<CameraMatrices>().WithAll<Camera>().ForEach((Entity e) =>
             {
                 EntityManager.AddComponent<CameraMatrices>(e);
             }).Run();
 
-            // update 
+            // update
             Entities.ForEach((ref Camera c, ref LocalToWorld tx, ref CameraMatrices cm) =>
             {
                 cm.projection = ProjectionMatrixFromCamera(ref c);

@@ -2,7 +2,7 @@ using Unity.Mathematics;
 using Unity.Entities;
 using Unity.Collections;
 using Bgfx;
- 
+
 namespace Unity.Tiny.Rendering
 {
     public struct SimpleMaterialBGFX : ISystemStateComponentData
@@ -12,6 +12,8 @@ namespace Unity.Tiny.Rendering
         // those colors are in srgb if srgb is disabled, otherwise linear
         public float4 constAlbedo_Opacity;
         public float4 mainTextureScaleTranslate;//scale: xy translate: zw
+
+        public float4 billboarded; // yzw unused
 
         public ulong state; // includes blending and culling!
     }
@@ -24,8 +26,8 @@ namespace Unity.Tiny.Rendering
         public bgfx.TextureHandle texEmissive;
 
         // those colors are in srgb if srgb is disabled, otherwise linear
-        public float4 constAlbedo_Opacity; 
-        public float4 constMetal_Smoothness; // zw unused 
+        public float4 constAlbedo_Opacity;
+        public float4 constMetal_Smoothness_Billboarded; // w unused
         public float4 constEmissive_normalMapZScale;
         public float4 mainTextureScaleTranslate; //scale: xy translate: zw
         public float4 smoothness; // x: 1 if the smoothness is albedo alpha, y: 1 if smoothness is metal alpha, z: opacity, w unused
@@ -38,7 +40,8 @@ namespace Unity.Tiny.Rendering
     [UpdateAfter(typeof(RendererBGFXSystem))]
     internal class UpdateMaterialsSystem : SystemBase
     {
-        public unsafe void UpdateLitMaterialBGFX(RendererBGFXInstance *sys, Entity e, bool srgbColors) {
+        public unsafe void UpdateLitMaterialBGFX(RendererBGFXInstance *sys, Entity e, bool srgbColors)
+        {
             var mat = EntityManager.GetComponentData<LitMaterial>(e);
             var matBGFX = EntityManager.GetComponentData<LitMaterialBGFX>(e);
             UpdateLitMaterialBGFX(sys, ref mat, ref matBGFX, srgbColors);
@@ -46,12 +49,14 @@ namespace Unity.Tiny.Rendering
         }
 
         // true if still loading
-        private bool InitTexture(ref bgfx.TextureHandle dest, Entity src, bgfx.TextureHandle defValue) {
+        private bool InitTexture(ref bgfx.TextureHandle dest, Entity src, bgfx.TextureHandle defValue)
+        {
             dest = defValue;
             if (src == Entity.Null)
                 return false;
             Image2D im = EntityManager.GetComponentData<Image2D>(src); // must have that one, no check?
-            if ( im.status == ImageStatus.Loaded && EntityManager.HasComponent<TextureBGFX>(src) ) {
+            if (im.status == ImageStatus.Loaded && EntityManager.HasComponent<TextureBGFX>(src))
+            {
                 TextureBGFX tex = EntityManager.GetComponentData<TextureBGFX>(src);
                 dest = tex.handle;
                 return false;
@@ -59,19 +64,20 @@ namespace Unity.Tiny.Rendering
             return true;
         }
 
-        public unsafe bool UpdateLitMaterialBGFX(RendererBGFXInstance *sys, ref LitMaterial mat, ref LitMaterialBGFX matBGFX, bool srgbColors) {
+        public unsafe bool UpdateLitMaterialBGFX(RendererBGFXInstance *sys, ref LitMaterial mat, ref LitMaterialBGFX matBGFX, bool srgbColors)
+        {
             bool stillLoading = false;
             if (InitTexture(ref matBGFX.texAlbedoOpacity, mat.texAlbedoOpacity, sys->m_whiteTexture)) stillLoading = true;
             if (InitTexture(ref matBGFX.texNormal, mat.texNormal, sys->m_upTexture)) stillLoading = true;
             if (InitTexture(ref matBGFX.texMetal, mat.texMetal, sys->m_whiteTexture)) stillLoading = true;
             if (InitTexture(ref matBGFX.texEmissive, mat.texEmissive, sys->m_whiteTexture)) stillLoading = true;
 
-            matBGFX.constAlbedo_Opacity = srgbColors?
-                new float4(Color.LinearToSRGB(mat.constAlbedo), mat.constOpacity):
+            matBGFX.constAlbedo_Opacity = srgbColors ?
+                new float4(Color.LinearToSRGB(mat.constAlbedo), mat.constOpacity) :
                 new float4(mat.constAlbedo, mat.constOpacity);
-            matBGFX.constMetal_Smoothness = new float4(mat.constMetal, mat.constSmoothness, 0, 0);
-            matBGFX.constEmissive_normalMapZScale = srgbColors?
-                new float4(Color.LinearToSRGB(mat.constEmissive), mat.normalMapZScale):
+            matBGFX.constMetal_Smoothness_Billboarded = new float4(mat.constMetal, mat.constSmoothness, mat.billboarded ? 1 : 0, 0);
+            matBGFX.constEmissive_normalMapZScale = srgbColors ?
+                new float4(Color.LinearToSRGB(mat.constEmissive), mat.normalMapZScale) :
                 new float4(mat.constEmissive, mat.normalMapZScale);
             matBGFX.mainTextureScaleTranslate = new float4(mat.scale, mat.offset);
             matBGFX.smoothness = new float4(0.0f);
@@ -81,7 +87,7 @@ namespace Unity.Tiny.Rendering
 
             // if twoSided, need to update state
             matBGFX.state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | bgfx.StateFlags.DepthTestLess);
-            if (!mat.twoSided)
+            if (!mat.twoSided && !mat.billboarded)
                 matBGFX.state |= (ulong)bgfx.StateFlags.CullCcw;
             if (mat.transparent)
                 matBGFX.state |= RendererBGFXStatic.MakeBGFXBlend(bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
@@ -90,32 +96,36 @@ namespace Unity.Tiny.Rendering
             return !stillLoading;
         }
 
-        public unsafe void UpdateSimpleMaterialBGFX(RendererBGFXInstance *sys, Entity e, bool srgbColors) {
+        public unsafe void UpdateSimpleMaterialBGFX(RendererBGFXInstance *sys, Entity e, bool srgbColors)
+        {
             var mat = EntityManager.GetComponentData<SimpleMaterial>(e);
             var matBGFX = EntityManager.GetComponentData<SimpleMaterialBGFX>(e);
             UpdateSimpleMaterialBGFX(sys, ref mat, ref matBGFX, srgbColors);
             EntityManager.SetComponentData(e, matBGFX);
         }
 
-        public unsafe bool UpdateSimpleMaterialBGFX(RendererBGFXInstance *sys, ref SimpleMaterial mat, ref SimpleMaterialBGFX matBGFX, bool srgbColors) {
+        public unsafe bool UpdateSimpleMaterialBGFX(RendererBGFXInstance *sys, ref SimpleMaterial mat, ref SimpleMaterialBGFX matBGFX, bool srgbColors)
+        {
             // if constants changed, need to update packed value
-            matBGFX.constAlbedo_Opacity = srgbColors?
-                new float4(Color.LinearToSRGB(mat.constAlbedo), mat.constOpacity):
+            matBGFX.constAlbedo_Opacity = srgbColors ?
+                new float4(Color.LinearToSRGB(mat.constAlbedo), mat.constOpacity) :
                 new float4(mat.constAlbedo, mat.constOpacity);
-            // if texture entity OR load state changed need to update texture handles 
+            // if texture entity OR load state changed need to update texture handles
             // content of texture change should transparently update texture referenced by handle
             bool stillLoading = false;
             if (InitTexture(ref matBGFX.texAlbedoOpacity, mat.texAlbedoOpacity, sys->m_whiteTexture)) stillLoading = true;
 
             // if twoSided or hasalpha changed, need to update state
             matBGFX.state = (ulong)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA | bgfx.StateFlags.DepthTestLess);
-            if (!mat.twoSided)
+            if (!mat.twoSided && !mat.billboarded)
                 matBGFX.state |= (ulong)bgfx.StateFlags.CullCw;
             if (mat.transparent)
                 matBGFX.state |= RendererBGFXStatic.MakeBGFXBlend(bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
             else
                 matBGFX.state |= (ulong)bgfx.StateFlags.WriteZ;
             matBGFX.mainTextureScaleTranslate = new float4(mat.scale, mat.offset);
+
+            matBGFX.billboarded = new float4(mat.billboarded ? 1 : 0, 0, 0, 0);
             return !stillLoading;
         }
 
@@ -125,9 +135,9 @@ namespace Unity.Tiny.Rendering
             Dependency.Complete();
 
             var di = GetSingleton<DisplayInfo>();
-            bool srgbColors = di.colorSpace==ColorSpace.Gamma;
+            bool srgbColors = di.colorSpace == ColorSpace.Gamma;
 
-            // add bgfx version of materials, system states 
+            // add bgfx version of materials, system states
             EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
             Entities.WithoutBurst().WithNone<LitMaterialBGFX>().WithAll<LitMaterial>().ForEach((Entity e) =>
             {
@@ -155,7 +165,7 @@ namespace Unity.Tiny.Rendering
             // TODO: bring back some form of optimization here when materials do not change
             //       change tracking is not enough as we need to chase entity pointers
             //       For now we assume that the number of materials is relatively low (<100) and this avoids
-            //       a lot of complications around change tracking 
+            //       a lot of complications around change tracking
 
             // system state cleanup - can reuse the same ecb, it does not matter if there is a bit of delay
             Entities.WithAll<SimpleMaterialBGFX>().WithNone<SimpleMaterial>().ForEach((Entity e) =>

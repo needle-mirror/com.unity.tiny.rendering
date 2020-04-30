@@ -1,4 +1,4 @@
-﻿using Unity.Tiny.Rendering;
+using Unity.Tiny.Rendering;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -44,7 +44,7 @@ namespace Unity.TinyConversion
                 Debug.Assert((long)&(p->TexCoord0) - (long)p == 12);
                 Debug.Assert((long)&(p->Normal) - (long)p == 20);
                 Debug.Assert((long)&(p->Tangent) - (long)p == 32);
-                Debug.Assert((long)&(p->BiTangent) - (long)p == 44);
+                Debug.Assert((long)&(p->BillboardPos) - (long)p == 44);
                 Debug.Assert((long)&(p->Albedo_Opacity) - (long)p == 56);
                 Debug.Assert((long)&(p->Metal_Smoothness) - (long)p == 72);
             }
@@ -61,7 +61,6 @@ namespace Unity.TinyConversion
 
             unsafe
             {
-                
                 int offset = 0;
                 byte* dest = (byte*)vertices.GetUnsafePtr();
                 //Copy vertices
@@ -75,18 +74,19 @@ namespace Unity.TinyConversion
                     UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), uvs, sizeof(float2), sizeof(float2), Positions.Length);
                     offset += sizeof(float2);
 
-                    byte* normals = (byte*)Normals.GetUnsafePtr<Vector3>();                            
-                    UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), normals, sizeof(float3), sizeof(float3), Positions.Length); 
+                    byte* normals = (byte*)Normals.GetUnsafePtr<Vector3>();
+                    UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), normals, sizeof(float3), sizeof(float3), Positions.Length);
                     offset += sizeof(float3);
 
                     byte* tangents = (byte*)Tangents.GetUnsafePtr<Vector3>();
                     UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), tangents, sizeof(float3), sizeof(float3), Positions.Length);
                     offset += sizeof(float3);
-
-                    byte* bitangents = (byte*)BiTangents.GetUnsafePtr<Vector3>();
-                    UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), bitangents, sizeof(float3), sizeof(float3), Positions.Length);
-                    offset += sizeof(float3);
                 }
+
+                //Billboard position not present in UnityEngine.Mesh
+                float3 billboardPos = float3.zero;
+                UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), &billboardPos, 0, sizeof(float3), Positions.Length);
+                offset += sizeof(float3);
 
                 //Vertex color is not supported in URP lit shader, override to white for now
                 float4 albedo = new float4(1);

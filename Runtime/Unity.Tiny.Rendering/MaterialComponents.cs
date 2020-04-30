@@ -14,6 +14,7 @@ namespace Unity.Tiny.Rendering
         public bool twoSided;
         public BlendOp blend;
         public bool transparent;
+        public bool billboarded;
 
         public float2 scale;
         public float2 offset;
@@ -21,13 +22,14 @@ namespace Unity.Tiny.Rendering
         public bool Equals(SimpleMaterial other)
         {
             return texAlbedoOpacity.Equals(other.texAlbedoOpacity) &&
-                   constAlbedo.Equals(other.constAlbedo) &&
-                   constOpacity.Equals(other.constOpacity) &&
-                   (twoSided == other.twoSided) &&
-                   (blend == other.blend) &&
-                   (transparent == other.transparent) &&
-                   scale.Equals(other.scale) &&
-                   offset.Equals(other.offset);
+                constAlbedo.Equals(other.constAlbedo) &&
+                constOpacity.Equals(other.constOpacity) &&
+                (twoSided == other.twoSided) &&
+                (blend == other.blend) &&
+                (transparent == other.transparent) &&
+                scale.Equals(other.scale) &&
+                offset.Equals(other.offset) &&
+                (billboarded == other.billboarded);
         }
     }
 
@@ -49,6 +51,7 @@ namespace Unity.Tiny.Rendering
         public bool transparent;
         public bool triangleSortTransparent;
         public bool smoothnessAlbedoAlpha;
+        public bool billboarded;
 
         public float2 scale;
         public float2 offset;
@@ -56,21 +59,22 @@ namespace Unity.Tiny.Rendering
         public bool Equals(LitMaterial other)
         {
             return texAlbedoOpacity.Equals(other.texAlbedoOpacity) &&
-                   texMetal.Equals(other.texMetal) &&
-                   texNormal.Equals(other.texNormal) &&
-                   texEmissive.Equals(other.texEmissive) &&
-                   constAlbedo.Equals(other.constAlbedo) &&
-                   constEmissive.Equals(other.constEmissive) &&
-                   constOpacity.Equals(other.constOpacity) &&
-                   constMetal.Equals(other.constMetal) &&
-                   constSmoothness.Equals(other.constSmoothness) &&
-                   normalMapZScale.Equals(other.normalMapZScale) &&
-                   (twoSided == other.twoSided) &&
-                   (transparent == other.transparent) &&
-                   (triangleSortTransparent == other.triangleSortTransparent) &&
-                   scale.Equals(other.scale) &&
-                   offset.Equals(other.offset) &&
-                   smoothnessAlbedoAlpha.Equals(other.smoothnessAlbedoAlpha);
+                texMetal.Equals(other.texMetal) &&
+                texNormal.Equals(other.texNormal) &&
+                texEmissive.Equals(other.texEmissive) &&
+                constAlbedo.Equals(other.constAlbedo) &&
+                constEmissive.Equals(other.constEmissive) &&
+                constOpacity.Equals(other.constOpacity) &&
+                constMetal.Equals(other.constMetal) &&
+                constSmoothness.Equals(other.constSmoothness) &&
+                normalMapZScale.Equals(other.normalMapZScale) &&
+                (twoSided == other.twoSided) &&
+                (transparent == other.transparent) &&
+                (triangleSortTransparent == other.triangleSortTransparent) &&
+                scale.Equals(other.scale) &&
+                offset.Equals(other.offset) &&
+                (smoothnessAlbedoAlpha == other.smoothnessAlbedoAlpha) &&
+                (billboarded == other.billboarded);
         }
     }
 }

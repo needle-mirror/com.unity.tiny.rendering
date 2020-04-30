@@ -1,4 +1,4 @@
-﻿using Unity.Build;
+using Unity.Build;
 using Unity.Properties;
 
 namespace Unity.Tiny.Rendering.Settings

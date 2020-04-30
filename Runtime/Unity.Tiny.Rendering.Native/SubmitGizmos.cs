@@ -14,24 +14,24 @@ using Unity.Burst;
 
 namespace Unity.Tiny.Rendering
 {
-    // helper gizmos for debugging and visualization 
-    // those are not optimized and can be quite slow 
+    // helper gizmos for debugging and visualization
+    // those are not optimized and can be quite slow
 
     public struct GizmoNormalsAndTangents : IComponentData // next to a mesh render
     {
         public float length; // in object space
-        public float width; // line width, in pixels 
+        public float width; // line width, in pixels
     }
 
     public struct GizmoObjectBoundingBox : IComponentData // next to something with object bounds
     {
-        public float width; // line width, in pixels 
+        public float width; // line width, in pixels
         public float4 color;
     }
 
     public struct GizmoWorldBoundingBox : IComponentData // next to something with world bounds
     {
-        public float width; // line width, in pixels 
+        public float width; // line width, in pixels
         public float4 color;
     }
 
@@ -44,20 +44,20 @@ namespace Unity.Tiny.Rendering
     public struct GizmoTransform : IComponentData // next to something with localToWorld transform
     {
         public float length; // in object space
-        public float width; // line width, in pixels 
+        public float width; // line width, in pixels
     }
 
-    public struct GizmoLight : IComponentData // next to a light (can detect spot or directional) 
+    public struct GizmoLight : IComponentData // next to a light (can detect spot or directional)
     {
-        public float width; // line width, in pixels 
+        public float width; // line width, in pixels
         public bool overrideColor; // if true use color specified here, otherwise use color from light
         public float4 color;
     }
 
     public struct GizmoWireframe : IComponentData // next to a mesh render
     {
-        // TODO 
-        public float width; // line width, in pixels 
+        // TODO
+        public float width; // line width, in pixels
         public float4 color;
     }
 
@@ -67,7 +67,7 @@ namespace Unity.Tiny.Rendering
         public float4 color;
     }
 
-    public struct GizmoAutoMovingDirectionalLight : IComponentData // next to a AutoMovingDirectionalLight 
+    public struct GizmoAutoMovingDirectionalLight : IComponentData // next to a AutoMovingDirectionalLight
     {
         public float width;
         public float4 colorCasters;
@@ -78,8 +78,8 @@ namespace Unity.Tiny.Rendering
     public struct GizmoDebugOverlayTexture : IComponentData // next to a TextureBGFX/Image2D
     {
         public float4 color;
-        public float2 pos;   // normalized device -1..1, center position 
-        public float2 size;  // normalized device -1..1, scale of a unit -1..1 rectangle 
+        public float2 pos;   // normalized device -1..1, center position
+        public float2 size;  // normalized device -1..1, scale of a unit -1..1 rectangle
     }
 
     [UpdateInGroup(typeof(SubmitSystemGroup))]
@@ -87,10 +87,11 @@ namespace Unity.Tiny.Rendering
     public unsafe class SubmitGizmos : SystemBase
     {
         static private void Circle(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, float3 org, float3 du, float3 dv, float r, int n, float4 color, float2 normWidth,
-                                          ref float4x4 tx, ref float4x4 txView, ref float4x4 txProj)
+            ref float4x4 tx, ref float4x4 txView, ref float4x4 txProj)
         {
             float3 pprev = org + dv * r;
-            for (int i = 1; i <= n; i++) {
+            for (int i = 1; i <= n; i++)
+            {
                 float a = ((float)i / (float)n) * math.PI * 2.0f;
                 float u = math.sin(a) * r;
                 float v = math.cos(a) * r;
@@ -105,7 +106,8 @@ namespace Unity.Tiny.Rendering
             var pass = EntityManager.GetComponentData<RenderPass>(ePass);
             float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
             float2 normWidth = new float2(width / pass.viewport.w, width / pass.viewport.h);
-            for (int j = 0; j < Culling.EdgeTable.Length; j++) {
+            for (int j = 0; j < Culling.EdgeTable.Length; j++)
+            {
                 float3 p0 = Culling.SelectCoordsMinMax(cMin, cMax, Culling.EdgeTable[j] & 7);
                 float3 p1 = Culling.SelectCoordsMinMax(cMin, cMax, Culling.EdgeTable[j] >> 3);
                 SubmitHelper.EncodeLine(sys, encoder, pass.viewId, p0, p1, color, normWidth,
@@ -113,7 +115,7 @@ namespace Unity.Tiny.Rendering
             }
         }
 
-        // gizmos for debuging 
+        // gizmos for debuging
         protected override void OnUpdate()
         {
             RendererBGFXInstance *sys = World.GetExistingSystem<RendererBGFXSystem>().InstancePointer();
@@ -128,12 +130,14 @@ namespace Unity.Tiny.Rendering
             {
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
-                    if (EntityManager.HasComponent<LitMeshRenderData>(mr.mesh)) { 
-                    var meshBase = EntityManager.GetComponentData<LitMeshRenderData>(mr.mesh);
+                    if (EntityManager.HasComponent<LitMeshRenderData>(mr.mesh))
+                    {
+                        var meshBase = EntityManager.GetComponentData<LitMeshRenderData>(mr.mesh);
                         Assert.IsTrue(giz.length > 0);
                         float2 normWidth = new float2(giz.width / pass.viewport.w, giz.width / pass.viewport.h);
                         SubmitHelper.EncodeDebugTangents(sys, encoder, pass.viewId, normWidth, giz.length, ref meshBase, ref tx.Value, ref pass.viewTransform, ref adjustedProjection);
@@ -149,13 +153,14 @@ namespace Unity.Tiny.Rendering
                 AABB b = EntityManager.GetComponentData<MeshBounds>(mr.mesh).Bounds;
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     EncodeBox(sys, encoder, ePass, ref tx.Value, b.Min, b.Max, giz.width, giz.color);
                 }
             }).Run();
 
-            // world bounds 
+            // world bounds
             Entities.WithoutBurst().ForEach((Entity e, ref WorldBounds b, ref LocalToWorld tx, ref GizmoWorldBoundingBox giz) =>
             {
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
@@ -163,12 +168,14 @@ namespace Unity.Tiny.Rendering
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 float4x4 idm = float4x4.identity;
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
                     float2 normWidth = new float2(giz.width / pass.viewport.w, giz.width / pass.viewport.h);
-                    for (int j = 0; j < Culling.EdgeTable.Length; j++) {
+                    for (int j = 0; j < Culling.EdgeTable.Length; j++)
+                    {
                         float3 p0 = b.GetVertex(Culling.EdgeTable[j] & 7);
                         float3 p1 = b.GetVertex(Culling.EdgeTable[j] >> 3);
                         SubmitHelper.EncodeLine(sys, encoder, pass.viewId, p0, p1, giz.color, normWidth,
@@ -184,7 +191,8 @@ namespace Unity.Tiny.Rendering
                     return;
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
@@ -196,7 +204,7 @@ namespace Unity.Tiny.Rendering
                 }
             }).Run();
 
-            // sphere 
+            // sphere
             Entities.WithoutBurst().ForEach((Entity e, ref LocalToWorld tx, ref WorldBoundingSphere bs, ref GizmoBoundingSphere giz) =>
             {
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
@@ -204,19 +212,20 @@ namespace Unity.Tiny.Rendering
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 float4x4 idm = float4x4.identity;
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
                     float2 normWidth = new float2(giz.width / pass.viewport.w, giz.width / pass.viewport.h);
                     Assert.IsTrue(giz.subdiv >= 4);
-                    Circle(sys, encoder, pass.viewId, bs.position, new float3(0, 0, 1), new float3(0, 1, 0), bs.radius, giz.subdiv, new float4(1, 0, 0, 1), normWidth, ref idm, ref pass.viewTransform, ref adjustedProjection); // z/y plane 
+                    Circle(sys, encoder, pass.viewId, bs.position, new float3(0, 0, 1), new float3(0, 1, 0), bs.radius, giz.subdiv, new float4(1, 0, 0, 1), normWidth, ref idm, ref pass.viewTransform, ref adjustedProjection); // z/y plane
                     Circle(sys, encoder, pass.viewId, bs.position, new float3(1, 0, 0), new float3(0, 0, 1), bs.radius, giz.subdiv, new float4(0, 1, 0, 1), normWidth, ref idm, ref pass.viewTransform, ref adjustedProjection); // x/z plane
                     Circle(sys, encoder, pass.viewId, bs.position, new float3(0, 1, 0), new float3(1, 0, 0), bs.radius, giz.subdiv, new float4(0, 0, 1, 1), normWidth, ref idm, ref pass.viewTransform, ref adjustedProjection); // y/x plane
                 }
             }).Run();
 
-            // spot lights 
+            // spot lights
             Entities.WithoutBurst().ForEach((Entity e, ref LocalToWorld tx, ref Light l, ref SpotLight sl, ref GizmoLight giz) =>
             {
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
@@ -224,14 +233,16 @@ namespace Unity.Tiny.Rendering
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 float4 color = giz.overrideColor ? giz.color : new float4(l.color, 1.0f);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float2 normWidth = new float2(giz.width / pass.viewport.w, giz.width / pass.viewport.h);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
                     // render frustum
                     float t = math.tan(math.radians(sl.fov) * .5f);
-                    for (int j = 0; j < Culling.EdgeTable.Length; j++) {
+                    for (int j = 0; j < Culling.EdgeTable.Length; j++)
+                    {
                         float3 pp0 = ProjectionHelper.FrustumVertexPerspective(Culling.EdgeTable[j] & 7, t, t, l.clipZNear, l.clipZFar);
                         float3 pp1 = ProjectionHelper.FrustumVertexPerspective(Culling.EdgeTable[j] >> 3, t, t, l.clipZNear, l.clipZFar);
                         SubmitHelper.EncodeLine(sys, encoder, pass.viewId, pp0, pp1, color, normWidth,
@@ -249,14 +260,15 @@ namespace Unity.Tiny.Rendering
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 float4 color = giz.overrideColor ? giz.color : new float4(l.color, 1.0f);
                 float3 cMin = new float3(-1, -1, l.clipZNear);
-                float3 cMax = new float3( 1,  1, l.clipZFar);
-                for (int i = 0; i < toPasses.Length; i++) {
+                float3 cMax = new float3(1,  1, l.clipZFar);
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     EncodeBox(sys, encoder, ePass, ref tx.Value, cMin, cMax, giz.width, color);
                 }
             }).Run();
 
-            // point lights 
+            // point lights
 
             // cameras
             Entities.WithoutBurst().ForEach((Entity e, ref LocalToWorld tx, ref Camera cam, ref GizmoCamera giz) =>
@@ -265,20 +277,25 @@ namespace Unity.Tiny.Rendering
                     return;
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     float2 normWidth = new float2(giz.width / pass.viewport.w, giz.width / pass.viewport.h);
                     float4x4 adjustedProjection = sys->GetAdjustedProjection(ref pass);
                     // render box
-                    if (cam.mode == ProjectionMode.Orthographic) {
+                    if (cam.mode == ProjectionMode.Orthographic)
+                    {
                         float3 cMin = new float3(-cam.fov, -cam.fov, cam.clipZNear);
                         float3 cMax = new float3(cam.fov, cam.fov, cam.clipZFar);
                         EncodeBox(sys, encoder, ePass, ref tx.Value, cMin, cMax, giz.width, giz.color);
-                    } else if (cam.mode == ProjectionMode.Perspective) { 
+                    }
+                    else if (cam.mode == ProjectionMode.Perspective)
+                    {
                         float h = math.tan(math.radians(cam.fov) * .5f);
                         float w = h * cam.aspect;
-                        for (int j = 0; j < Culling.EdgeTable.Length; j++) {
+                        for (int j = 0; j < Culling.EdgeTable.Length; j++)
+                        {
                             float3 pp0 = ProjectionHelper.FrustumVertexPerspective(Culling.EdgeTable[j] & 7, w, h, cam.clipZNear, cam.clipZFar);
                             float3 pp1 = ProjectionHelper.FrustumVertexPerspective(Culling.EdgeTable[j] >> 3, w, h, cam.clipZNear, cam.clipZFar);
                             SubmitHelper.EncodeLine(sys, encoder, pass.viewId, pp0, pp1, giz.color, normWidth,
@@ -288,7 +305,7 @@ namespace Unity.Tiny.Rendering
                 }
             }).Run();
 
-            // auto bounds 
+            // auto bounds
             Entities.WithoutBurst().ForEach((Entity e, ref LocalToWorld tx, ref AutoMovingDirectionalLight amd, ref GizmoAutoMovingDirectionalLight giz) =>
             {
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
@@ -296,7 +313,8 @@ namespace Unity.Tiny.Rendering
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 float4x4 idm = float4x4.identity;
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     EncodeBox(sys,  encoder, ePass, ref idm, amd.bounds.Min, amd.bounds.Max, giz.width, giz.colorCasters);
                     EncodeBox(sys, encoder, ePass, ref idm, amd.boundsClipped.Min, amd.boundsClipped.Max, giz.width, giz.colorClippedReceivers);
@@ -313,13 +331,15 @@ namespace Unity.Tiny.Rendering
                 m.c3.xy = giz.pos;
                 m.c0.x = giz.size.x;
                 m.c1.y = giz.size.y;
-                SimpleMaterialBGFX sm = new SimpleMaterialBGFX {
+                SimpleMaterialBGFX sm = new SimpleMaterialBGFX
+                {
                     texAlbedoOpacity = tex.handle,
                     constAlbedo_Opacity = giz.color,
-                    mainTextureScaleTranslate = new float4(1,1,0,0),
+                    mainTextureScaleTranslate = new float4(1, 1, 0, 0),
                     state = (ulong)bgfx.StateFlags.WriteRgb
                 };
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     SubmitHelper.EncodeSimple(sys, encoder, pass.viewId, ref sys->m_quadMesh, ref m, ref sm, 0, 6, pass.GetFlipCulling());
@@ -328,6 +348,4 @@ namespace Unity.Tiny.Rendering
             bgfx.encoder_end(encoder);
         }
     }
-
-
 }

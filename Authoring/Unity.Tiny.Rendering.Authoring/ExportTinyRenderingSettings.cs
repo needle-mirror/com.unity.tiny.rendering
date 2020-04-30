@@ -8,7 +8,7 @@ namespace Unity.Tiny.Authoring
 {
     [UpdateAfter(typeof(ConfigurationSystem))]
     [DisableAutoCreation]
-    public class ExportTinyRenderingSettings: ConfigurationSystemBase
+    public class ExportTinyRenderingSettings : ConfigurationSystemBase
     {
         protected override void OnUpdate()
         {
@@ -18,7 +18,7 @@ namespace Unity.Tiny.Authoring
                 Assert.IsTrue(num != 0);
                 var singletonEntity = query.GetSingletonEntity();
                 DisplayInfo di = DisplayInfo.Default;
-                di.colorSpace =  UnityEditor.PlayerSettings.colorSpace == UnityEngine.ColorSpace.Gamma?ColorSpace.Gamma:ColorSpace.Linear;
+                di.colorSpace =  UnityEditor.PlayerSettings.colorSpace == UnityEngine.ColorSpace.Gamma ? ColorSpace.Gamma : ColorSpace.Linear;
                 if (buildConfiguration != null)
                 {
                     if (buildConfiguration.TryGetComponent<TinyRenderingSettings>(out var settings))

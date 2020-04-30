@@ -11,11 +11,12 @@ namespace Unity.Tiny.Rendering
     {
         public static AABB ComputeBounds(NativeArray<LitVertex> vertices)
         {
-            if ( vertices.Length <= 0 )
+            if (vertices.Length <= 0)
                 return new AABB();
             float3 bbMin = vertices[0].Position;
             float3 bbMax = bbMin;
-            for (int i = 1; i < vertices.Length; i++) {
+            for (int i = 1; i < vertices.Length; i++)
+            {
                 bbMin = math.min(vertices[i].Position, bbMin);
                 bbMax = math.max(vertices[i].Position, bbMax);
             }
@@ -24,40 +25,44 @@ namespace Unity.Tiny.Rendering
 
         public static AABB ComputeBounds(NativeArray<SimpleVertex> vertices)
         {
-            if ( vertices.Length <= 0 )
+            if (vertices.Length <= 0)
                 return new AABB();
             float3 bbMin = vertices[0].Position;
             float3 bbMax = bbMin;
-            for (int i = 1; i < vertices.Length; i++) {
+            for (int i = 1; i < vertices.Length; i++)
+            {
                 bbMin = math.min(vertices[i].Position, bbMin);
                 bbMax = math.max(vertices[i].Position, bbMax);
             }
             return new AABB { Center = (bbMin + bbMax) * .5f, Extents = (bbMax - bbMin) * .5f };
         }
 
-        public static void ComputeNormals(NativeArray<LitVertex> vertices, NativeArray<ushort> indices, bool clear=false)
+        public static void ComputeNormals(NativeArray<LitVertex> vertices, NativeArray<ushort> indices, bool clear = false)
         {
             unsafe {
                 int nv = vertices.Length;
                 var verts = (LitVertex*)vertices.GetUnsafePtr();
                 int ni = indices.Length;
                 var inds = (ushort*)indices.GetUnsafePtr();
-                if ( clear ) { 
+                if (clear)
+                {
                     for (int i = 0; i < nv; i++)
                         verts[i].Normal = new float3(0);
                 }
-                for (int i = 0; i < ni; i += 3) {
+                for (int i = 0; i < ni; i += 3)
+                {
                     int i0 = inds[i];
                     int i1 = inds[i + 1];
                     int i2 = inds[i + 2];
                     Assert.IsTrue(i0 >= 0 && i0 < nv && i1 >= 0 && i1 < nv && i2 >= 0 && i2 < nv);
-                    float3 n = -math.cross(verts[i2].Position - verts[i0].Position, verts[i1].Position - verts[i0].Position); // don't normalize, weights by area 
-                    Assert.IsTrue(math.lengthsq(n) > 0.0f); // zero sized triangles are bad 
+                    float3 n = -math.cross(verts[i2].Position - verts[i0].Position, verts[i1].Position - verts[i0].Position); // don't normalize, weights by area
+                    Assert.IsTrue(math.lengthsq(n) > 0.0f); // zero sized triangles are bad
                     verts[i0].Normal += n;
                     verts[i1].Normal += n;
                     verts[i2].Normal += n;
                 }
-                for (int i = 0; i < nv; i++) {
+                for (int i = 0; i < nv; i++)
+                {
                     Assert.IsTrue(math.lengthsq(verts[i].Normal) > 0.0f);
                     verts[i].Normal = math.normalize(verts[i].Normal);
                 }
@@ -66,14 +71,15 @@ namespace Unity.Tiny.Rendering
 
         public static void ComputeTangentAndBinormal(NativeArray<LitVertex> vertices, NativeArray<ushort> indices)
         {
-            unsafe { 
+            unsafe {
                 int nv = vertices.Length;
                 int ni = indices.Length;
                 ushort* inds = (ushort*)indices.GetUnsafePtr();
                 LitVertex* verts = (LitVertex*)vertices.GetUnsafePtr();
 
-                // assumes normal is valid! 
-                for (int i = 0; i < ni; i += 3) {
+                // assumes normal is valid!
+                for (int i = 0; i < ni; i += 3)
+                {
                     int i0 = inds[i + 2];
                     int i1 = inds[i + 1];
                     int i2 = inds[i];
@@ -101,23 +107,19 @@ namespace Unity.Tiny.Rendering
                     Assert.IsTrue(math.lengthsq(tangent) > 0.0f);
                     Assert.IsTrue(math.lengthsq(bitangent) > 0.0f);
                     float3 n2 = math.cross(tangent, bitangent);
-                    if (math.dot(n2, n) > 0.0f) {
+                    if (math.dot(n2, n) > 0.0f)
+                    {
                         tangent = -tangent;
-                        bitangent = -bitangent;
                     }
                     verts[i0].Tangent += tangent;
-                    verts[i0].BiTangent += bitangent;
                     verts[i1].Tangent += tangent;
-                    verts[i1].BiTangent += bitangent;
                     verts[i2].Tangent += tangent;
-                    verts[i2].BiTangent += bitangent;
                 }
 
-                for (int i = 0; i < nv; i++) {
+                for (int i = 0; i < nv; i++)
+                {
                     Assert.IsTrue(math.lengthsq(verts[i].Tangent) > 0.0f);
-                    Assert.IsTrue(math.lengthsq(verts[i].BiTangent) > 0.0f);
                     verts[i].Tangent = math.normalize(verts[i].Tangent);
-                    verts[i].BiTangent = math.normalize(verts[i].BiTangent);
                 }
             }
         }
@@ -170,12 +172,12 @@ namespace Unity.Tiny.Rendering
                 r * ECos(p * phi, e),
                 r * ESin(p * phi, e),
                 -ESin(q * phi, e)
-                ) * (1.0f / 3.0f);
+            ) * (1.0f / 3.0f);
             /*
             float r = .5f * ( ESin(q*phi, e) + 2.0f );
-            return new float3 ( 
-                r * ECos(p*phi, e), 
-                r * ESin(p*phi, e), 
+            return new float3 (
+                r * ECos(p*phi, e),
+                r * ESin(p*phi, e),
                 r * ECos(q*phi, e)
                 );*/
         }
@@ -186,29 +188,31 @@ namespace Unity.Tiny.Rendering
             return new float2(ESin(phi, e), ECos(phi, e));
         }
 
-        // makes a super torus knot. 
+        // makes a super torus knot.
         // the knot part is based on: https://en.wikipedia.org/wiki/Torus_knot and https://blackpawn.com/texts/pqtorus/
         // and the super part on: https://en.wikipedia.org/wiki/Supertoroid
         // for a regular, round torus use: innerE=outerE=1, and p=1, 1=0
-        // good exponents range from around 0.2 ... 2, but can be anuthing >0 and define how aquare the part is 
-        // p and q are the integer knot parameters 
+        // good exponents range from around 0.2 ... 2, but can be anuthing >0 and define how aquare the part is
+        // p and q are the integer knot parameters
         public static void FillSuperTorusKnot(NativeArray<LitVertex> vertices, NativeArray<ushort> indices,
-                                     float innerR, int innerN, float outerR, int outerN, int p, int q, float innerE, float outerE)
+            float innerR, int innerN, float outerR, int outerN, int p, int q, float innerE, float outerE)
         {
             // profile
             NativeArray<float2> profile = new NativeArray<float2>(innerN, Allocator.TempJob);
-            for (int i = 0; i < innerN; i++) {
+            for (int i = 0; i < innerN; i++)
+            {
                 float fInner = i / (float)(innerN - 1);
                 float v = fInner * 2.0f * math.PI;
                 profile[i] = EvalSuperCircle(v, innerE);
             }
             // centerline
             NativeArray<float3> centerLine = new NativeArray<float3>(outerN, Allocator.TempJob);
-            for (int i = 0; i < outerN; i++) {
+            for (int i = 0; i < outerN; i++)
+            {
                 float fOuter = i / (float)(outerN - 1); // last vertex is repeated, we have an uv seam there
                 centerLine[i] = EvalSuperTorusKnotCenterLine(fOuter * math.PI * 2.0f, p, q, outerE);
             }
-            // taper 
+            // taper
             NativeArray<float> taper = new NativeArray<float>(2, Allocator.TempJob);
             taper[0] = 0;
             taper[1] = 1;
@@ -220,25 +224,25 @@ namespace Unity.Tiny.Rendering
         }
 
         public static void FillDonut(NativeArray<LitVertex> vertices, NativeArray<ushort> indices,
-                                     float innerR, int innerN, float outerR, int outerN)
+            float innerR, int innerN, float outerR, int outerN)
         {
             FillSuperTorusKnot(vertices, indices, innerR, innerN, outerR, outerN, 1, 0, 1, 1);
         }
 
         public static float3x4 InitCatmullRom(float3 p0, float3 p1, float3 p2, float3 p3)
         {
-            return new float3x4( 
+            return new float3x4(
                 p1,
-                (p2 - p0)*.5f,
-                p0 - p1*2.5f + p2*2.0f - p3*.5f,
-                (p3 - p0)*.5f + (p1 - p2)*1.5f
+                (p2 - p0) * .5f,
+                p0 - p1 * 2.5f + p2 * 2.0f - p3 * .5f,
+                (p3 - p0) * .5f + (p1 - p2) * 1.5f
             );
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float3 EvalCatmullRom(in float3x4 m, float t)
         {
-            return m.c0 + (m.c1 + (m.c2 + m.c3*t)*t)*t;
+            return m.c0 + (m.c1 + (m.c2 + m.c3 * t) * t) * t;
         }
 
         private static float ResampleCatmullRomSegment(float3 p0, float3 p1, float3 p2, float3 p3, float preStep, float stepDistance, NativeList<float3> dest)
@@ -250,7 +254,8 @@ namespace Unity.Tiny.Rendering
             float3x4 spline = InitCatmullRom(p0, p1, p2, p3);
             int k = ((int)(ll / stepDistance) + 1) * 2;
             float3 pPrev = p1; //==EvalCatmullRom(in spline, 0);
-            for (int i = 1; i <= k; i++) {
+            for (int i = 1; i <= k; i++)
+            {
                 float3 pNext = EvalCatmullRom(in spline, i / (float)k);
                 preStep = ResampleLinearSegment(pPrev, pNext, preStep, stepDistance, dest);
                 pPrev = pNext;
@@ -266,19 +271,26 @@ namespace Unity.Tiny.Rendering
             Assert.IsTrue(n >= 3);
             var result = new NativeList<float3>(n * 2, allocator);
             float preStep = 0;
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0; i < n - 1; i++)
+            {
                 float3 p1 = curve[i];
                 float3 p2 = curve[i + 1];
                 float3 p0, p3;
-                if (i > 0) {
+                if (i > 0)
+                {
                     p0 = curve[i - 1];
-                } else {
+                }
+                else
+                {
                     if (closed) p0 = curve[n - 1];
                     else p0 = curve[0] + (curve[0] - curve[1]);
                 }
-                if (i < n - 2) {
+                if (i < n - 2)
+                {
                     p3 = curve[i + 2];
-                } else {
+                }
+                else
+                {
                     if (closed) p3 = curve[0];
                     else p3 = curve[n - 1] + (curve[n - 1] - curve[n - 2]);
                 }
@@ -297,7 +309,8 @@ namespace Unity.Tiny.Rendering
             if (!(l > 0.0f))
                 return preStep;
             float t = preStep;
-            while (t <= l) {
+            while (t <= l)
+            {
                 dest.Add(p1 + dp * (t / l));
                 t += stepDistance;
             }
@@ -310,12 +323,14 @@ namespace Unity.Tiny.Rendering
             var result = new NativeList<float3>((n + 1) * 2, allocator);
             if (n == 0)
                 return result;
-            if (n == 1) {
+            if (n == 1)
+            {
                 result.Add(curve[0]);
                 return result;
             }
             float preStep = 0;
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0; i < n - 1; i++)
+            {
                 float3 p1 = curve[i];
                 float3 p2 = curve[i + 1];
                 preStep = ResampleLinearSegment(p1, p2, preStep, stepDistance, result);
@@ -333,14 +348,15 @@ namespace Unity.Tiny.Rendering
         }
 
         public static void FillExtrudedLineCircle(NativeArray<LitVertex> vertices, NativeArray<ushort> indices, float radius,
-                                                   float taperLen, float uLen, NativeArray<float3> centerline, int nSegments, bool closed)
+            float taperLen, float uLen, NativeArray<float3> centerline, int nSegments, bool closed)
         {
             NativeArray<float2> profile = new NativeArray<float2>(nSegments, Allocator.TempJob);
             NativeArray<float> taper = new NativeArray<float>(nSegments, Allocator.TempJob);
-            for (int i = 0; i < nSegments; i++) {
+            for (int i = 0; i < nSegments; i++)
+            {
                 float f = i / (float)(nSegments - 1);
-                float s = math.sin(math.acos(1.0f-f));
-                Assert.IsTrue(s>=0.0f && s<=1.0f);
+                float s = math.sin(math.acos(1.0f - f));
+                Assert.IsTrue(s >= 0.0f && s <= 1.0f);
                 taper[i] = s;
                 f *= math.PI * 2.0f;
                 profile[i] = new float2(math.sin(f), math.cos(f));
@@ -353,22 +369,24 @@ namespace Unity.Tiny.Rendering
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float SampleNativeArrayUniformLinear(NativeArray<float> arr, float t)
         {
-            Assert.IsTrue(t>=0.0f && t<=1.0f);
-            Assert.IsTrue(arr.Length>=2);
+            Assert.IsTrue(t >= 0.0f && t <= 1.0f);
+            Assert.IsTrue(arr.Length >= 2);
             float fidx = (int)(t * (arr.Length - 1));
             int iidx = (int)fidx;
-            if ( iidx==arr.Length-1 )
+            if (iidx == arr.Length - 1)
                 return arr[iidx];
-            float f = math.lerp(arr[iidx], arr[iidx+1], fidx-iidx);
-            Assert.IsTrue(f>=0.0f && f<=1.0f);
+            float f = math.lerp(arr[iidx], arr[iidx + 1], fidx - iidx);
+            Assert.IsTrue(f >= 0.0f && f <= 1.0f);
             return f;
         }
 
         public static void FillPlanarIndices(int tessU, int tessV, NativeArray<ushort> indices)
         {
             int o = 0;
-            for (int aOuter = 0; aOuter < tessV - 1; aOuter++) {
-                for (int aInner = 0; aInner < tessU - 1; aInner++) {
+            for (int aOuter = 0; aOuter < tessV - 1; aOuter++)
+            {
+                for (int aInner = 0; aInner < tessU - 1; aInner++)
+                {
                     int iBase = aInner + aOuter * tessU;
                     indices[o++] = (ushort)(iBase + tessU + 1);
                     indices[o++] = (ushort)(iBase + 1);
@@ -381,7 +399,7 @@ namespace Unity.Tiny.Rendering
         }
 
         public static void FillExtrudedLine(NativeArray<LitVertex> vertices, NativeArray<ushort> indices, float radius,
-                                                   float taperLen, float uLen, NativeArray<float3> centerline, NativeArray<float2> profile, NativeArray<float> taper, bool closed)
+            float taperLen, float uLen, NativeArray<float3> centerline, NativeArray<float2> profile, NativeArray<float> taper, bool closed)
         {
             int nVertices = centerline.Length;
             int nSegments = profile.Length;
@@ -394,7 +412,8 @@ namespace Unity.Tiny.Rendering
             Assert.IsTrue(nVertices >= 3);
             // meassure
             float totalDistance = 0;
-            for (int i = 0; i < nVertices - 1; i++) {
+            for (int i = 0; i < nVertices - 1; i++)
+            {
                 float d = math.length(centerline[i + 1] - centerline[i]);
                 Assert.IsTrue(d > 0.0f);
                 totalDistance += d;
@@ -403,7 +422,8 @@ namespace Unity.Tiny.Rendering
             float distance = 0;
             int o = 0;
             float uScale = 1.0f / uLen;
-            for (int i = 0; i < nVertices; i++) {
+            for (int i = 0; i < nVertices; i++)
+            {
                 float3 center = centerline[i];
                 float3 nextcenter;
                 if (i == nVertices - 1) nextcenter = center + (center - centerline[i - 1]);
@@ -419,16 +439,17 @@ namespace Unity.Tiny.Rendering
                     r *= SampleNativeArrayUniformLinear(taper, distance / taperLen);
                 else if (distance > totalDistance - taperLen)
                     r *= SampleNativeArrayUniformLinear(taper, (totalDistance - distance) / taperLen);
-                // circle 
-                for (int j = 0; j < nSegments; j++) {
+                // circle
+                for (int j = 0; j < nSegments; j++)
+                {
                     float jF = j / (float)(nSegments - 1);
                     float3 n = up * profile[j].x + left * profile[j].y;
-                    vertices[o] = new LitVertex {
+                    vertices[o] = new LitVertex
+                    {
                         Position = center + n * r,
                         Normal = n,
                         TexCoord0 = new float2(distance * uScale, jF),
                         Tangent = forward,
-                        BiTangent = up * profile[j].y - left * profile[j].x,
                         Albedo_Opacity = new float4(1),
                         Metal_Smoothness = new float2(1)
                     };
@@ -436,7 +457,7 @@ namespace Unity.Tiny.Rendering
                 }
                 distance += math.length(nextcenter - center);
             }
-            // indices 
+            // indices
             FillPlanarIndices(nSegments, nVertices, indices);
             frameTangents.Dispose();
             frameNormals.Dispose();
@@ -445,10 +466,13 @@ namespace Unity.Tiny.Rendering
         private static float3 InitialNormal(float3 tangent)
         {
             int absMinAxis;
-            if (math.abs(tangent.y) < math.abs(tangent.x)) {
+            if (math.abs(tangent.y) < math.abs(tangent.x))
+            {
                 if (math.abs(tangent.y) < math.abs(tangent.z)) absMinAxis = 1;
                 else absMinAxis = 2;
-            } else {
+            }
+            else
+            {
                 if (math.abs(tangent.z) < math.abs(tangent.x)) absMinAxis = 2;
                 else absMinAxis = 0;
             }
@@ -477,21 +501,23 @@ namespace Unity.Tiny.Rendering
             float theta = math.acos(math.dot(normals[0], normals[n - 1])) / (float)(n - 1);
             if (math.dot(tangents[0], math.cross(normals[0], normals[n - 1])) > 0.0f)
                 theta = -theta;
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0; i < n - 1; i++)
+            {
                 float3x3 rot = float3x3.AxisAngle(tangents[i], theta * (float)i);
                 normals[i] = math.mul(rot, normals[i]);
             }
             normals[n - 1] = normals[0];
         }
 
-        // writes normals and tangents 
+        // writes normals and tangents
         // based on https://www.microsoft.com/en-us/research/wp-content/uploads/2016/12/Computation-of-rotation-minimizing-frames.pdf
         private static void RotationMinimizingFrame(NativeArray<float3> pos, NativeArray<float3> normals, NativeArray<float3> tangents, bool closed)
         {
             InitTangents(pos, normals, tangents, closed);
             normals[0] = InitialNormal(tangents[0]);
             int n = pos.Length;
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0; i < n - 1; i++)
+            {
                 float3 v1 = pos[i + 1] - pos[i];
                 float c1 = math.dot(v1, v1);
                 float3 rLi = normals[i] - (2.0f / c1) * math.dot(v1, normals[i]) * v1;
@@ -504,18 +530,22 @@ namespace Unity.Tiny.Rendering
                 PostRotateToCloseFrame(normals, tangents);
         }
 
-        // writes normals and tangents 
+        // writes normals and tangents
         // based on https://janakiev.com/blog/framing-parametric-curves/
         private static void ParallelTransportFrame(NativeArray<float3> pos, NativeArray<float3> normals, NativeArray<float3> tangents, bool closed)
         {
             InitTangents(pos, normals, tangents, closed);
             int n = pos.Length;
             normals[0] = InitialNormal(tangents[0]);
-            for (int i = 0; i < n - 1; i++) {
+            for (int i = 0; i < n - 1; i++)
+            {
                 float3 b = math.cross(tangents[i], tangents[i + 1]);
-                if (math.lengthsq(b) < 0.0001f) {
+                if (math.lengthsq(b) < 0.0001f)
+                {
                     normals[i + 1] = normals[i];
-                } else {
+                }
+                else
+                {
                     b = math.normalize(b);
                     float phi = math.acos(math.dot(tangents[i], tangents[i + 1]));
                     float3x3 rot = float3x3.AxisAngle(b, phi);
@@ -533,7 +563,7 @@ namespace Unity.Tiny.Rendering
 
         public static int ExtrudedLineMeshRequiredIndices(int nCenterLineVertices, int nSegments)
         {
-            return (nCenterLineVertices-1) * (nSegments-1) * 6;
+            return (nCenterLineVertices - 1) * (nSegments - 1) * 6;
         }
 
         public static void CreateExtrudedLineMesh(float radius, float taperLen, float uLen, int nSegments, NativeArray<float3> centerline, out MeshBounds mb, out LitMeshRenderData lmrd)
@@ -541,8 +571,8 @@ namespace Unity.Tiny.Rendering
             int nVertices = centerline.Length;
             var builder = new BlobBuilder(Allocator.Temp);
             ref var root = ref builder.ConstructRoot<LitMeshData>();
-            var vertices = builder.Allocate(ref root.Vertices, ExtrudedLineMeshRequiredVertices (nVertices, nSegments));
-            var indices = builder.Allocate(ref root.Indices, ExtrudedLineMeshRequiredIndices (nVertices, nSegments));
+            var vertices = builder.Allocate(ref root.Vertices, ExtrudedLineMeshRequiredVertices(nVertices, nSegments));
+            var indices = builder.Allocate(ref root.Indices, ExtrudedLineMeshRequiredIndices(nVertices, nSegments));
             FillExtrudedLineCircle(vertices.AsNativeArray(), indices.AsNativeArray(), radius, taperLen, uLen, centerline, nSegments, false);
             mb.Bounds = ComputeBounds(vertices.AsNativeArray());
             lmrd.Mesh = builder.CreateBlobAssetReference<LitMeshData>(Allocator.Persistent);
@@ -557,7 +587,7 @@ namespace Unity.Tiny.Rendering
             Assert.IsTrue(innerE > 0 && outerE > 0);
             var builder = new BlobBuilder(Allocator.Temp);
             ref var root = ref builder.ConstructRoot<LitMeshData>();
-            // in x/y plane 
+            // in x/y plane
             var vertices = builder.Allocate(ref root.Vertices, innerN * outerN);
             var indices = builder.Allocate(ref root.Indices, (innerN - 1) * (outerN - 1) * 6);
             FillSuperTorusKnot(vertices.AsNativeArray(), indices.AsNativeArray(), innerR, innerN, outerR, outerN, p, q, innerE, outerE);
@@ -571,7 +601,6 @@ namespace Unity.Tiny.Rendering
             CreateSuperTorusKnotMesh(innerR, innerN, outerR, outerN, 1, 0, 1, 1, out mb, out lmrd);
         }
 
-
         static public void CreateSuperEllipsoidMesh(float3 size, float r, float t, int tessU, int tessV, out MeshBounds mb, out LitMeshRenderData lmrd)
         {
             Assert.IsTrue(tessU * tessV <= ushort.MaxValue);
@@ -581,12 +610,12 @@ namespace Unity.Tiny.Rendering
             var indices = builder.Allocate(ref root.Indices, (tessU - 1) * (tessV - 1) * 6);
             CreateSuperEllipsoid(size, vertices.AsNativeArray(), indices.AsNativeArray(), r, t, tessU, tessV, out mb.Bounds);
             lmrd.Mesh = builder.CreateBlobAssetReference<LitMeshData>(Allocator.Persistent);
-            builder.Dispose();            
+            builder.Dispose();
         }
 
         // based on https://en.wikipedia.org/wiki/Superellipsoid
         // (parameters e = 2/r, n = 2/t)
-        // some shapes: 
+        // some shapes:
         // sphere:   e = 1,    n = 1
         // cube:     e = 0.01, n = 0.01
         // cylinder: e = 1,    n = 0.01
@@ -595,22 +624,25 @@ namespace Unity.Tiny.Rendering
         static public void CreateSuperEllipsoid(float3 size, NativeArray<LitVertex> vertices, NativeArray<ushort> indices, float e, float n, int tessU, int tessV, out AABB bb)
         {
             Assert.IsTrue(e > 0.0f && n > 0.0f);
-            Assert.IsTrue(tessU>=4 && tessV>=4);
+            Assert.IsTrue(tessU >= 4 && tessV >= 4);
             Assert.IsTrue(math.cmin(size) > 0.0f);
             int o = 0;
-            for ( int v=0; v<tessV; v++ ) { 
-                float fv = (v+.5f) / tessV; // nasty trick: round v, exclude poles
-                float rfv = (fv-.5f)*math.PI;
-                for ( int u=0; u<tessU; u++ ) {
-                    float fu = 1.0f - u / (float)(tessU-1);
-                    float rfu = (fu*2.0f - 1.0f) * math.PI;
-                    float3 pos = new float3 (
+            for (int v = 0; v < tessV; v++)
+            {
+                float fv = (v + .5f) / tessV; // nasty trick: round v, exclude poles
+                float rfv = (fv - .5f) * math.PI;
+                for (int u = 0; u < tessU; u++)
+                {
+                    float fu = 1.0f - u / (float)(tessU - 1);
+                    float rfu = (fu * 2.0f - 1.0f) * math.PI;
+                    float3 pos = new float3(
                         ECos(rfv, n) * ECos(rfu, e),
                         ECos(rfv, n) * ESin(rfu, e),
                         ESin(rfv, n));
                     Assert.IsTrue(math.cmax(math.abs(pos)) <= 1.0f);
                     pos *= size;
-                    vertices[o++] = new LitVertex {
+                    vertices[o++] = new LitVertex
+                    {
                         Position = pos,
                         TexCoord0 = new float2(fu, fv),
                         Albedo_Opacity = new float4(1),
@@ -623,14 +655,15 @@ namespace Unity.Tiny.Rendering
             ComputeTangentAndBinormal(vertices, indices);
             // now weld pole position together, but normals and tangents and so on will still
             // have useful values
-            float3 pos0 = new float3 (0, 0, -size.z);
-            float3 pos1 = new float3 (0, 0,  size.z);
-            int ko = tessU*tessV-1;
-            unsafe { 
+            float3 pos0 = new float3(0, 0, -size.z);
+            float3 pos1 = new float3(0, 0,  size.z);
+            int ko = tessU * tessV - 1;
+            unsafe {
                 LitVertex *verts = (LitVertex *)vertices.GetUnsafePtr();
-                for ( int u=0; u<tessU; u++ ) {
+                for (int u = 0; u < tessU; u++)
+                {
                     verts[u].Position = pos0;
-                    verts[ko-u].Position = pos1;
+                    verts[ko - u].Position = pos1;
                 }
             }
             bb.Center = new float3(0);
@@ -658,8 +691,8 @@ namespace Unity.Tiny.Rendering
 
         static public NativeArray<T> AsNativeArray<T>(this BlobBuilderArray<T> bba) where T : struct
         {
-            unsafe { 
-                var r = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<T>(bba.GetUnsafePtr(), bba.Length, Allocator.Invalid); 
+            unsafe {
+                var r = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<T>(bba.GetUnsafePtr(), bba.Length, Allocator.Invalid);
                 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref r, AtomicSafetyHandle.GetTempMemoryHandle());
                 #endif
@@ -669,8 +702,8 @@ namespace Unity.Tiny.Rendering
 
         static public NativeArray<T> AsNativeArray<T>(ref BlobArray<T> ba) where T : struct
         {
-            unsafe { 
-                var r = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<T>(ba.GetUnsafePtr(), ba.Length, Allocator.Invalid); 
+            unsafe {
+                var r = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<T>(ba.GetUnsafePtr(), ba.Length, Allocator.Invalid);
                 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref r, AtomicSafetyHandle.GetTempMemoryHandle());
                 #endif
@@ -684,7 +717,7 @@ namespace Unity.Tiny.Rendering
             ref var root = ref builder.ConstructRoot<LitMeshData>();
             var vertices = builder.Allocate(ref root.Vertices, 24);
             var indices = builder.Allocate(ref root.Indices, 36);
-            FillBoxMesh (size, vertices.AsNativeArray(), indices.AsNativeArray(), out mb.Bounds);
+            FillBoxMesh(size, vertices.AsNativeArray(), indices.AsNativeArray(), out mb.Bounds);
             lmrd.Mesh = builder.CreateBlobAssetReference<LitMeshData>(Allocator.Persistent);
             builder.Dispose();
         }
@@ -737,22 +770,22 @@ namespace Unity.Tiny.Rendering
             builder.Dispose();
         }
 
-        public static void SetAlbedoColor ( NativeArray<LitVertex> dest, float4 albedo_opacity)
+        public static void SetAlbedoColor(NativeArray<LitVertex> dest, float4 albedo_opacity)
         {
-            unsafe { 
+            unsafe {
                 int n = dest.Length;
                 LitVertex *vp = (LitVertex *)dest.GetUnsafePtr();
-                for ( int i=0; i<n; i++ )
+                for (int i = 0; i < n; i++)
                     vp[i].Albedo_Opacity = albedo_opacity;
             }
         }
 
-        public static void SetMetalSmoothness ( NativeArray<LitVertex> dest, float2 metal_smoothness)
+        public static void SetMetalSmoothness(NativeArray<LitVertex> dest, float2 metal_smoothness)
         {
-            unsafe { 
+            unsafe {
                 int n = dest.Length;
                 LitVertex *vp = (LitVertex *)dest.GetUnsafePtr();
-                for ( int i=0; i<n; i++ )
+                for (int i = 0; i < n; i++)
                     vp[i].Metal_Smoothness = metal_smoothness;
             }
         }

@@ -52,10 +52,13 @@ namespace Unity.Tiny.Rendering
             if (actualIndexCount < 0)
                 actualIndexCount = indexCount;
             Assert.IsTrue(startIndex >= 0 && actualIndexCount + startIndex <= indexCount);
-            if (isDynamic) {
+            if (isDynamic)
+            {
                 bgfx.encoder_set_dynamic_index_buffer(encoder, GetDynamicIndexBufferHandle(), (uint)startIndex, (uint)actualIndexCount);
                 bgfx.encoder_set_dynamic_vertex_buffer(encoder, 0, GetDynamicVertexBufferHandle(), 0, (uint)vertexCount, vertexLayoutHandle);
-            } else {
+            }
+            else
+            {
                 bgfx.encoder_set_index_buffer(encoder, GetIndexBufferHandle(), (uint)startIndex, (uint)actualIndexCount);
                 bgfx.encoder_set_vertex_buffer(encoder, 0, GetVertexBufferHandle(), 0, (uint)vertexCount, vertexLayoutHandle);
             }
@@ -68,7 +71,8 @@ namespace Unity.Tiny.Rendering
 
         public static MeshBGFX CreateEmpty()
         {
-            return new MeshBGFX {
+            return new MeshBGFX
+            {
                 indexBufferHandle = 0xffff,
                 vertexBufferHandle = 0xffff,
                 indexCount = 0,
@@ -81,12 +85,15 @@ namespace Unity.Tiny.Rendering
 
         public void Destroy()
         {
-            if (!isDynamic) {
+            if (!isDynamic)
+            {
                 if (indexBufferHandle != 0xffff)
                     bgfx.destroy_index_buffer(GetIndexBufferHandle());
                 if (vertexBufferHandle != 0xffff)
                     bgfx.destroy_vertex_buffer(GetVertexBufferHandle());
-            } else {
+            }
+            else
+            {
                 if (indexBufferHandle != 0xffff)
                     bgfx.destroy_dynamic_index_buffer(GetDynamicIndexBufferHandle());
                 if (vertexBufferHandle != 0xffff)
@@ -103,12 +110,13 @@ namespace Unity.Tiny.Rendering
         public static unsafe MeshBGFX CreateDynamicMeshLit(RendererBGFXInstance* inst, int maxVertices, int maxIndices)
         {
             Assert.IsTrue(maxVertices <= 0x10000 && maxVertices > 0 && maxIndices > 0 && maxIndices <= 0xf0000);
-            return new MeshBGFX {
+            return new MeshBGFX
+            {
                 maxVertexCount = maxVertices,
                 maxIndexCount = maxIndices,
                 vertexCount = 0,
                 indexCount = 0,
-                vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
+                vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, &inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 indexBufferHandle = bgfx.create_dynamic_index_buffer((uint)maxIndices, (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_litVertexBufferDeclHandle,
                 isDynamic = true
@@ -118,12 +126,13 @@ namespace Unity.Tiny.Rendering
         public static unsafe MeshBGFX CreateDynamicMeshSimple(RendererBGFXInstance* inst, int maxVertices, int maxIndices)
         {
             Assert.IsTrue(maxVertices <= 0x10000 && maxVertices > 0 && maxIndices > 0 && maxIndices <= 0xf0000);
-            return new MeshBGFX {
+            return new MeshBGFX
+            {
                 maxVertexCount = maxVertices,
                 maxIndexCount = maxIndices,
                 vertexCount = 0,
                 indexCount = 0,
-                vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, inst->m_simpleVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
+                vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, &inst->m_simpleVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 indexBufferHandle = bgfx.create_dynamic_index_buffer((uint)maxIndices, (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_simpleVertexBufferDeclHandle,
                 isDynamic = true
@@ -132,9 +141,10 @@ namespace Unity.Tiny.Rendering
 
         public static unsafe MeshBGFX CreateStaticMesh(RendererBGFXInstance* inst, ushort* indices, int nindices, SimpleVertex* vertices, int nvertices)
         {
-            return new MeshBGFX {
+            return new MeshBGFX
+            {
                 indexBufferHandle = bgfx.create_index_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)indices, nindices * 2), (ushort)bgfx.BufferFlags.None).idx,
-                vertexBufferHandle = bgfx.create_vertex_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)vertices, nvertices * sizeof(SimpleVertex)), inst->m_simpleVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
+                vertexBufferHandle = bgfx.create_vertex_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)vertices, nvertices * sizeof(SimpleVertex)), &inst->m_simpleVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 indexCount = nindices,
                 vertexCount = nvertices,
                 maxIndexCount = nindices,
@@ -156,14 +166,15 @@ namespace Unity.Tiny.Rendering
         public static unsafe MeshBGFX CreateStaticMesh(RendererBGFXInstance* inst, ushort* indices, int nindices, LitVertex* vertices, int nvertices)
         {
             Assert.IsTrue(nindices > 0 && nvertices > 0 && nvertices <= ushort.MaxValue);
-            return new MeshBGFX {
+            return new MeshBGFX
+            {
                 indexCount = nindices,
                 vertexCount = nvertices,
                 maxIndexCount = nindices,
                 maxVertexCount = nvertices,
                 indexBufferHandle = bgfx.create_index_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)indices, nindices * 2), (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_litVertexBufferDeclHandle,
-                vertexBufferHandle = bgfx.create_vertex_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)vertices, nvertices * sizeof(LitVertex)), inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
+                vertexBufferHandle = bgfx.create_vertex_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)vertices, nvertices * sizeof(LitVertex)), &inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 isDynamic = false
             };
         }

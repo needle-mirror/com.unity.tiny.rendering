@@ -15,7 +15,7 @@ using Unity.Burst;
 
 namespace Unity.Tiny.Rendering
 {
-    // attach next to an entity with rotation  
+    // attach next to an entity with rotation
     public struct DemoSpinner : IComponentData
     {
         public quaternion spin;
@@ -44,7 +44,7 @@ namespace Unity.Tiny.Rendering
         }
     }
 
-    // attach next to a Camera 
+    // attach next to a Camera
     public struct CameraKeyControl : IComponentData
     {
         public float movespeed;
@@ -71,7 +71,7 @@ namespace Unity.Tiny.Rendering
     {
         protected int m_nshots;
         public bool m_configAlwaysRun;
-        public bool m_notFirst; 
+        public bool m_notFirst;
 
 #if !UNITY_EDITOR
         protected void ControlCamera(Entity ecam)
@@ -84,7 +84,8 @@ namespace Unity.Tiny.Rendering
             float2 inpos = input.GetInputPosition();
             float2 deltaMouse = input.GetInputDelta() / new float2(di.width, di.height);
 
-            if ( !m_notFirst ) {
+            if (!m_notFirst)
+            {
                 m_notFirst = true;
                 return;
             }
@@ -93,7 +94,7 @@ namespace Unity.Tiny.Rendering
             bool mb1 = input.GetMouseButton(1);
             bool mb2 = input.GetMouseButton(2);
 
-            if ( input.IsTouchSupported() )
+            if (input.IsTouchSupported())
             {
                 if (input.TouchCount() > 0)
                 {
@@ -139,17 +140,20 @@ namespace Unity.Tiny.Rendering
             }
             cam.fov = math.clamp(cam.fov, 0.1f, 179.0f);
 
-            if (mb0) {
+            if (mb0)
+            {
                 var dyAxis = quaternion.EulerXYZ(new float3(0, deltaMouse.x * math.radians(cc.mouserotspeed), 0));
                 var dxAxis = quaternion.EulerXYZ(new float3(-deltaMouse.y * math.radians(cc.mouserotspeed), 0, 0));
                 tRot.Value = math.mul(tRot.Value, dyAxis);
                 tRot.Value = math.mul(tRot.Value, dxAxis);
             }
-            if (mb1) {
+            if (mb1)
+            {
                 tPos.Value += rMat.c0 * -deltaMouse.x * cc.mousemovespeed;
                 tPos.Value += rMat.c1 * deltaMouse.y * cc.mousemovespeed;
             }
-            if (input.GetMouseButton(2)) {
+            if (input.GetMouseButton(2))
+            {
                 tPos.Value += rMat.c2 * deltaMouse.y * cc.mousemovespeed;
             }
 
@@ -159,20 +163,24 @@ namespace Unity.Tiny.Rendering
             EntityManager.SetComponentData<Camera>(ecam, cam);
         }
 
-        protected Entity FindCamera() {
+        protected Entity FindCamera()
+        {
             var ecam = Entity.Null;
             float bestdepth = 0;
             Entities.WithAll<Translation, Rotation, CameraKeyControl>().ForEach((Entity e, ref Camera cam) =>
             {
-                if (ecam == Entity.Null || cam.depth > bestdepth) {
+                if (ecam == Entity.Null || cam.depth > bestdepth)
+                {
                     bestdepth = cam.depth;
                     ecam = e;
                 }
             }).Run();
-            if ( ecam==Entity.Null ) {
+            if (ecam == Entity.Null)
+            {
                 Entities.WithAll<Translation, Rotation>().ForEach((Entity e, ref Camera cam) =>
                 {
-                    if (ecam == Entity.Null || cam.depth > bestdepth) {
+                    if (ecam == Entity.Null || cam.depth > bestdepth)
+                    {
                         bestdepth = cam.depth;
                         ecam = e;
                     }
@@ -180,8 +188,8 @@ namespace Unity.Tiny.Rendering
             }
             return ecam;
         }
-#endif
 
+#endif
 
 
         protected unsafe override void OnUpdate()
@@ -203,21 +211,23 @@ namespace Unity.Tiny.Rendering
             if (input.GetKey(KeyCode.F2) || (input.GetKey(KeyCode.Alpha2) && anyAlt))
                 rendererInstance->SetFlagThisFrame(bgfx.DebugFlags.Stats);
 
-            if (input.GetKeyDown(KeyCode.F3) || (input.GetKeyDown(KeyCode.Alpha3) && anyAlt)) {
+            if (input.GetKeyDown(KeyCode.F3) || (input.GetKeyDown(KeyCode.Alpha3) && anyAlt))
+            {
                 var di = env.GetConfigData<DisplayInfo>();
-                if ( di.colorSpace==ColorSpace.Gamma ) di.colorSpace = ColorSpace.Linear;
-                else di.colorSpace=ColorSpace.Gamma;
+                if (di.colorSpace == ColorSpace.Gamma) di.colorSpace = ColorSpace.Linear;
+                else di.colorSpace = ColorSpace.Gamma;
                 env.SetConfigData(di);
                 renderer.DestroyAllTextures();
                 renderer.ReloadAllImages();
-                Debug.LogFormatAlways("Color space is now {0}.", di.colorSpace==ColorSpace.Gamma?"Gamma (no srgb sampling)":"Linear" );
+                Debug.LogFormatAlways("Color space is now {0}.", di.colorSpace == ColorSpace.Gamma ? "Gamma (no srgb sampling)" : "Linear");
             }
 
-            if (input.GetKeyDown(KeyCode.F4) || (input.GetKeyDown(KeyCode.Alpha4) && anyAlt)) {
+            if (input.GetKeyDown(KeyCode.F4) || (input.GetKeyDown(KeyCode.Alpha4) && anyAlt))
+            {
                 var di = env.GetConfigData<DisplayInfo>();
                 di.disableVSync = !di.disableVSync;
                 env.SetConfigData(di);
-                Debug.LogFormatAlways("VSync is now {0}.", di.disableVSync?"disabled":"enabled" );
+                Debug.LogFormatAlways("VSync is now {0}.", di.disableVSync ? "disabled" : "enabled");
             }
 
             rendererInstance->m_outputDebugSelect = new float4(0, 0, 0, 0);
@@ -237,8 +247,8 @@ namespace Unity.Tiny.Rendering
             if (input.GetKeyDown(KeyCode.Escape))
             {
                 Debug.LogFormatAlways("Reloading all textures.");
-                // free all textures - this releases the bgfx textures and invalidates all cached bgfx state that might contain texture handles 
-                // note that this does not free system textures like single pixel white, default spotlight etc. 
+                // free all textures - this releases the bgfx textures and invalidates all cached bgfx state that might contain texture handles
+                // note that this does not free system textures like single pixel white, default spotlight etc.
                 renderer.DestroyAllTextures();
                 // now force a reload on all image2d's from files
                 renderer.ReloadAllImages();

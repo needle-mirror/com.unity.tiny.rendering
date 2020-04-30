@@ -299,21 +299,26 @@ static void trace_vargs(bgfx_callback_interface_t* _this, const char* _filePath,
 }
 
 static void profiler_begin(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    _filePath = stripPath(_filePath);
-    char buf[4096] = { 0 };
-    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-    g_profilerBegin(buf, bytes);
+    if (g_profilerBegin != NULL) {
+        _filePath = stripPath(_filePath);
+        char buf[4096] = { 0 };
+        int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+        g_profilerBegin(buf, bytes);
+    }
 }
 
 static void profiler_begin_literal(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    _filePath = stripPath(_filePath);
-    char buf[4096] = { 0 };
-    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-    g_profilerBegin(buf, bytes);
+    if (g_profilerBegin != NULL) {
+        _filePath = stripPath(_filePath);
+        char buf[4096] = { 0 };
+        int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+        g_profilerBegin(buf, bytes);
+    }
 }
 
 static void profiler_end(bgfx_callback_interface_t* _this) {
-    g_profilerEnd();
+    if (g_profilerEnd != NULL)
+        g_profilerEnd();
 }
 
 static uint32_t cache_read_size(bgfx_callback_interface_t* _this, uint64_t _id) {

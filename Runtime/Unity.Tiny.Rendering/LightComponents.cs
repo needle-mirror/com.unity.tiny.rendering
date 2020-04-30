@@ -17,10 +17,10 @@ namespace Unity.Tiny.Rendering
 
     public struct Light : IComponentData
     {
-        // always points in z direction 
-        public float clipZNear; // near clip, applies only for mapped lights 
+        // always points in z direction
+        public float clipZNear; // near clip, applies only for mapped lights
         public float clipZFar;
-        
+
         public float intensity;
         public float3 color;
         // if no other components are not to a light, it's a simple non-shadowed omni light
@@ -28,7 +28,7 @@ namespace Unity.Tiny.Rendering
 
     public struct ShadowmappedLight : IComponentData // next to light
     {
-        public int shadowMapResolution;     // for auto creation, this is the texture resolution, so if there are multiple cascades in the map this includes all of them 
+        public int shadowMapResolution;     // for auto creation, this is the texture resolution, so if there are multiple cascades in the map this includes all of them
         public Entity shadowMap;            // the shadow map texture
         public Entity shadowMapRenderNode;  // node used for shadow map creation
     }
@@ -37,8 +37,8 @@ namespace Unity.Tiny.Rendering
     {
         public float3 cascadeScale;      // The four cascades are scaled according to these weights, the largest cascade has an implicit weight of 1
                                          // 1>x>y>z>0. z is the scale of the highest detail cascade.
-        public float cascadeBlendWidth;  // Blend width for blending between cascades: 0=no blending, 1=maximum blending 
-        public Entity camera;            // The camera this cascade is computed from - must match the camera rendering the shadows 
+        public float cascadeBlendWidth;  // Blend width for blending between cascades: 0=no blending, 1=maximum blending
+        public Entity camera;            // The camera this cascade is computed from - must match the camera rendering the shadows
     }
 
     public struct CascadeData
@@ -59,8 +59,9 @@ namespace Unity.Tiny.Rendering
 
         public CascadeData GetCascadeData(int idx)
         {
-            switch ( idx ) {
-                default: Assert.IsTrue(idx==0); return c0;
+            switch (idx)
+            {
+                default: Assert.IsTrue(idx == 0); return c0;
                 case 1: return c1;
                 case 2: return c2;
                 case 3: return c3;
@@ -69,7 +70,8 @@ namespace Unity.Tiny.Rendering
 
         public void SetCascadeData(int idx, in CascadeData cd)
         {
-            switch ( idx ) {
+            switch (idx)
+            {
                 case 0: c0 = cd; break;
                 case 1: c1 = cd; break;
                 case 2: c2 = cd; break;
@@ -82,7 +84,7 @@ namespace Unity.Tiny.Rendering
     public struct SpotLight : IComponentData // next to light
     {
         // always points in z direction
-        public float fov; // in degrees 
+        public float fov; // in degrees
         public float innerRadius; // [0..1[, start of circle falloff 1=sharp circle, 0=smooth, default 0
         public float ratio; // ]0..1] 1=circle, 0=line, default 1
     }
@@ -91,11 +93,11 @@ namespace Unity.Tiny.Rendering
     {
     }
 
-    // This component automatically updates a directional lights position & size 
+    // This component automatically updates a directional lights position & size
     // so the shadow map covers the intersection of the bounds of interest and the cameras frustum
     // because it changes the size and position of the directional light it is not suitable for projection textures in the light
     // Also requires a NonUniformScale component next to it
-    public struct AutoMovingDirectionalLight : IComponentData // next to mapped directional light 
+    public struct AutoMovingDirectionalLight : IComponentData // next to mapped directional light
     {
         public AABB bounds;                 // bounds of the world to track (world space)
         public bool autoBounds;             // automatically get bounds from world bounds of renderers
@@ -103,7 +105,7 @@ namespace Unity.Tiny.Rendering
                                             // entity here. The entity pointed to here must have a Frustum component.
         public AABB boundsClipped;          // set to the clipped receiver bounds if clipToCamera is set (world space)
     }
-    
+
     public struct LightToLightingSetup : IBufferElementData
     {
         public Entity e; // the light should add itself to this lighting setup
@@ -118,7 +120,7 @@ namespace Unity.Tiny.Rendering
     /// Ambient light. To add next to entity with a Light component on it.
     /// The ambient light color and intensity must be set in the Light Component.
     /// </summary>
-    public struct AmbientLight : IComponentData { }
+    public struct AmbientLight : IComponentData {}
 
     public struct Fog : IComponentData
     {
@@ -142,13 +144,13 @@ namespace Unity.Tiny.Rendering
     [UpdateAfter(typeof(UpdateWorldBoundsSystem))]
     public class UpdateAutoMovingLightSystem : SystemBase
     {
-        private AABB RotateBounds (ref float4x4 tx, ref AABB b)
+        private AABB RotateBounds(in float4x4 tx, in AABB b)
         {
             WorldBounds wBounds;
-            Culling.AxisAlignedToWorldBounds(ref tx, ref b, out wBounds);
-            // now turn those bounds back to axis aligned.. 
+            Culling.AxisAlignedToWorldBounds(in tx, in b, out wBounds);
+            // now turn those bounds back to axis aligned..
             AABB aab;
-            Culling.WorldBoundsToAxisAligned(ref wBounds, out aab);
+            Culling.WorldBoundsToAxisAligned(in wBounds, out aab);
             return aab;
         }
 
@@ -156,16 +158,17 @@ namespace Unity.Tiny.Rendering
         {
             bool p0inside = math.dot(plane.xyz, p0) >= -plane.w;
             bool p1inside = math.dot(plane.xyz, p1) >= -plane.w;
-            if (!p0inside && !p1inside) 
+            if (!p0inside && !p1inside)
                 return false; // both outside
             if (p0inside && p1inside)
-                return true; // both inside, no need to change p0 and p1 
-            // clip 
+                return true; // both inside, no need to change p0 and p1
+            // clip
             float3 dp = p1 - p0;
             float dp0 = math.dot(plane.xyz, p0);
             float dpd = math.dot(plane.xyz, dp);
             float t = -(plane.w + dp0) / dpd;
-            if ( !(t>0.0f && t<1.0f) ) { // if dpd == 0, point on plane
+            if (!(t > 0.0f && t < 1.0f)) // if dpd == 0, point on plane
+            {
                 if (p0inside) p1 = p0;
                 else p0 = p1;
                 return true;
@@ -178,7 +181,8 @@ namespace Unity.Tiny.Rendering
 
         static unsafe int ClipLineFrustum(float3 p0, float3 p1, in Frustum f, float3 *dest)
         {
-            for ( int i=0; i<f.PlanesCount; i++ ) {
+            for (int i = 0; i < f.PlanesCount; i++)
+            {
                 if (!ClipLinePlane(ref p0, ref p1, f.GetPlane(i)))
                     return 0;
             }
@@ -187,7 +191,7 @@ namespace Unity.Tiny.Rendering
             return 2;
         }
 
-        static AABB ClipAABBByFrustum(in AABB b, in Frustum f, in Camera cam, in float4x4 camTx) 
+        static AABB ClipAABBByFrustum(in AABB b, in Frustum f, in Camera cam, in float4x4 camTx)
         {
             AABB r = default;
 
@@ -198,31 +202,35 @@ namespace Unity.Tiny.Rendering
                 float3* insidePoints = stackalloc float3[48];
                 int nInsidePoints = 0;
                 // clip the 12 edge lines of the aab into the frustum, and add their end points
-                // this is not optimal, but robust 
-                for ( int i=0; i<Culling.EdgeTable.Length; i++ ) {
-                    float3 p0 = Culling.SelectCoordsMinMax(bMin, bMax, Culling.EdgeTable[i]&7);
-                    float3 p1 = Culling.SelectCoordsMinMax(bMin, bMax, Culling.EdgeTable[i]>>3);
+                // this is not optimal, but robust
+                for (int i = 0; i < Culling.EdgeTable.Length; i++)
+                {
+                    float3 p0 = Culling.SelectCoordsMinMax(bMin, bMax, Culling.EdgeTable[i] & 7);
+                    float3 p1 = Culling.SelectCoordsMinMax(bMin, bMax, Culling.EdgeTable[i] >> 3);
                     nInsidePoints += ClipLineFrustum(p0, p1, in f, insidePoints + nInsidePoints);
                 }
-                // clip the 12 edge lines of the furstum into the aab, and add their end points 
+                // clip the 12 edge lines of the furstum into the aab, and add their end points
                 Frustum f2;
                 ProjectionHelper.FrustumFromAABB(b, out f2);
                 WorldBounds wb = UpdateCameraMatricesSystem.BoundsFromCamera(in cam);
                 Culling.TransformWorldBounds(in camTx, ref wb);
-                for ( int i=0; i<Culling.EdgeTable.Length; i++ ) {
-                    float3 p0 = wb.GetVertex(Culling.EdgeTable[i]&7);
-                    float3 p1 = wb.GetVertex(Culling.EdgeTable[i]>>3);
+                for (int i = 0; i < Culling.EdgeTable.Length; i++)
+                {
+                    float3 p0 = wb.GetVertex(Culling.EdgeTable[i] & 7);
+                    float3 p1 = wb.GetVertex(Culling.EdgeTable[i] >> 3);
                     nInsidePoints += ClipLineFrustum(p0, p1, in f2, insidePoints + nInsidePoints);
                 }
-                if (nInsidePoints > 0) {
+                if (nInsidePoints > 0)
+                {
                     float3 bbMin = insidePoints[0];
                     float3 bbMax = bbMin;
-                    for ( int i=1; i<nInsidePoints; i++ ) {
+                    for (int i = 1; i < nInsidePoints; i++)
+                    {
                         bbMin = math.min(insidePoints[i], bbMin);
                         bbMax = math.max(insidePoints[i], bbMax);
                     }
-                    r.Center = (bbMax+bbMin)*.5f;
-                    r.Extents = (bbMax-bbMin)*.5f;
+                    r.Center = (bbMax + bbMin) * .5f;
+                    r.Extents = (bbMax - bbMin) * .5f;
                 }
             }
             return r;
@@ -236,13 +244,15 @@ namespace Unity.Tiny.Rendering
 
             var camTx = EntityManager.GetComponentData<LocalToWorld>(csm.camera);
             var invLight = math.inverse(ltw.Value);
-            // transform camera to light space, that's where we want to have the most samples! 
+            // transform camera to light space, that's where we want to have the most samples!
             float3 camPos = math.transform(invLight, camTx.Value.c3.xyz);
 
-            for (int cascadeIndex = 0; cascadeIndex < 4; cascadeIndex++) {
+            for (int cascadeIndex = 0; cascadeIndex < 4; cascadeIndex++)
+            {
                 float ratio = 1.0f;
                 float2 useOffset = camPos.xy;
-                switch (cascadeIndex) {
+                switch (cascadeIndex)
+                {
                     case 0:
                         //ratio = 1.0f;
                         useOffset = new float2(0);
@@ -275,9 +285,11 @@ namespace Unity.Tiny.Rendering
             }
         }
 
-        void AssignSimpleAutoBounds(ref AutoMovingDirectionalLight amdl, ref LocalToWorld ltw, ref Rotation rx, ref Translation tx, ref NonUniformScale sc) { 
+        void AssignSimpleAutoBounds(ref AutoMovingDirectionalLight amdl, ref LocalToWorld ltw, ref Rotation rx, ref Translation tx, ref NonUniformScale sc)
+        {
             AABB bounds = amdl.bounds;
-            if (amdl.clipToCamera!=Entity.Null) {
+            if (amdl.clipToCamera != Entity.Null)
+            {
                 var camMatrices =  EntityManager.GetComponentData<CameraMatrices>(amdl.clipToCamera);
                 var cam = EntityManager.GetComponentData<Camera>(amdl.clipToCamera);
                 var camTx = EntityManager.GetComponentData<LocalToWorld>(amdl.clipToCamera);
@@ -290,7 +302,7 @@ namespace Unity.Tiny.Rendering
             float4x4 rotOnlyTx = new float4x4(rx.Value, new float3(0));
             float4x4 rotOnlyTxInv = new float4x4(math.inverse(rx.Value), new float3(0));
 
-            AABB lsBounds = RotateBounds(ref rotOnlyTxInv, ref bounds);
+            AABB lsBounds = RotateBounds(in rotOnlyTxInv, in bounds);
 
             float3 posls;
             posls.x = lsBounds.Center.x;
@@ -303,21 +315,21 @@ namespace Unity.Tiny.Rendering
             sc.Value.z = lsBounds.Extents.z * 2.0f;
 
             // also write back to local to world, as it's going to get used later
-            ltw.Value = math.mul ( new float4x4(rx.Value, tx.Value), float4x4.Scale(sc.Value) );
+            ltw.Value = math.mul(new float4x4(rx.Value, tx.Value), float4x4.Scale(sc.Value));
         }
 
-        protected override void OnUpdate() 
+        protected override void OnUpdate()
         {
             Dependency.Complete();
 #if DEBUG
             // debug check that csm lights are AutoMovingDirectionalLight
             Entities.WithoutBurst().WithNone<AutoMovingDirectionalLight>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) => {
-                Assert.IsTrue(false, "Lights with CascadeShadowmappedLight must include AutoMovingDirectionalLight component for bounds." );
+                Assert.IsTrue(false, "Lights with CascadeShadowmappedLight must include AutoMovingDirectionalLight component for bounds.");
             }).Run();
 #endif
             // add csm caches to lights
             EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
-            Entities.WithNone<CascadeShadowmappedLightCache>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) => 
+            Entities.WithNone<CascadeShadowmappedLightCache>().WithAll<CascadeShadowmappedLight>().ForEach((Entity e) =>
             {
                 ecb.AddComponent<CascadeShadowmappedLightCache>(e);
             }).Run();
@@ -326,32 +338,33 @@ namespace Unity.Tiny.Rendering
 
             var sysBounds = World.GetExistingSystem<UpdateWorldBoundsSystem>();
             Entities.WithoutBurst().WithAll<DirectionalLight>().ForEach((Entity eLight, ref AutoMovingDirectionalLight amdl,
-                ref Light l, ref LocalToWorld ltw, ref Rotation rx, ref Translation tx, ref NonUniformScale sc) => 
-            {
-                Assert.IsTrue(!EntityManager.HasComponent<Parent>(eLight), "Auto moving directional lights can not have a parent transform" );
-                if (amdl.autoBounds)
-                    amdl.bounds =  sysBounds.m_wholeWorldBounds;
-                // TODO: split into two loops, BUT can not have that many components in ForEach 
-                l.clipZFar = 1.0f; 
-                l.clipZNear = 0.0f;
-                AssignSimpleAutoBounds(ref amdl, ref ltw, ref rx, ref tx, ref sc);
-                if ( EntityManager.HasComponent<CascadeShadowmappedLight>(eLight)) {
-                    var csm = EntityManager.GetComponentData<CascadeShadowmappedLight>(eLight);
-                    var csmDest = EntityManager.GetComponentData<CascadeShadowmappedLightCache>(eLight);
-                    AssignCascades(ref amdl, ref ltw, ref rx, ref csm, ref csmDest);
-                    EntityManager.SetComponentData<CascadeShadowmappedLightCache>(eLight, csmDest);
-                }
-            }).Run();
+                ref Light l, ref LocalToWorld ltw, ref Rotation rx, ref Translation tx, ref NonUniformScale sc) =>
+                {
+                    Assert.IsTrue(!EntityManager.HasComponent<Parent>(eLight), "Auto moving directional lights can not have a parent transform");
+                    if (amdl.autoBounds)
+                        amdl.bounds =  sysBounds.m_wholeWorldBounds;
+                    // TODO: split into two loops, BUT can not have that many components in ForEach
+                    l.clipZFar = 1.0f;
+                    l.clipZNear = 0.0f;
+                    AssignSimpleAutoBounds(ref amdl, ref ltw, ref rx, ref tx, ref sc);
+                    if (EntityManager.HasComponent<CascadeShadowmappedLight>(eLight))
+                    {
+                        var csm = EntityManager.GetComponentData<CascadeShadowmappedLight>(eLight);
+                        var csmDest = EntityManager.GetComponentData<CascadeShadowmappedLightCache>(eLight);
+                        AssignCascades(ref amdl, ref ltw, ref rx, ref csm, ref csmDest);
+                        EntityManager.SetComponentData<CascadeShadowmappedLightCache>(eLight, csmDest);
+                    }
+                }).Run();
         }
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     public class UpdateLightMatricesSystem : SystemBase
     {
-        protected override void OnUpdate() 
+        protected override void OnUpdate()
         {
             Dependency.Complete();
-            // add matrices component if needed 
+            // add matrices component if needed
             EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
             Entities.WithoutBurst().WithNone<LightMatrices>().WithAll<Light>().ForEach((Entity e) =>
             {
@@ -359,8 +372,8 @@ namespace Unity.Tiny.Rendering
             }).Run();
             ecb.Playback(EntityManager);
             ecb.Dispose();
-            
-            // update 
+
+            // update
             Entities.ForEach((ref Light c, ref LocalToWorld tx, ref LightMatrices m, ref SpotLight sl) =>
             { // spot light
                 m.projection = ProjectionHelper.ProjectionMatrixPerspective(c.clipZNear, c.clipZFar, sl.fov, 1.0f);
@@ -380,7 +393,7 @@ namespace Unity.Tiny.Rendering
                 m.projection = float4x4.identity;
                 m.view = math.inverse(tx.Value);
                 m.mvp = math.mul(m.projection, m.view);
-                // build furstum from bounds 
+                // build furstum from bounds
                 ProjectionHelper.FrustumFromCube(tx.Value.c3.xyz, c.clipZFar, out m.frustum);
             }).Run();
         }

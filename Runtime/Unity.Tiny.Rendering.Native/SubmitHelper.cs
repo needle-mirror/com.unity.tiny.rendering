@@ -21,31 +21,33 @@ namespace Unity.Tiny.Rendering
             ulong state = (ulong)(bgfx.StateFlags.WriteZ | bgfx.StateFlags.DepthTestLess | bgfx.StateFlags.CullCcw);
             if (flipCulling != 0) state = FlipCulling(state);
             bgfx.encoder_set_state(encoder, state, 0);
-            unsafe { fixed (float4x4* p = &tx) bgfx.encoder_set_transform(encoder, p, 1); }
+            unsafe { fixed(float4x4* p = &tx) bgfx.encoder_set_transform(encoder, p, 1); }
             mesh.SetForSubmit(encoder, startIndex, indexCount);
             float4 color = new float4(1, 0, 0, 1);
             bgfx.encoder_set_uniform(encoder, sys->m_zOnlyShader.m_uniformDebugColor, &color, 1);
-            bgfx.encoder_submit(encoder, viewId, sys->m_zOnlyShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_zOnlyShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
 #if DEBUG
-        private static float4 GetShadowDebugColor (int idx)
+        private static float4 GetShadowDebugColor(int idx)
         {
-            switch (idx%6) {
-                case 0: return new float4(0,0,0,1);
-                case 1: return new float4(0,0,.5f,1);
-                case 2: return new float4(0,0,1,1);
-                case 3: return new float4(0,.5f,1,1);
-                case 4: return new float4(0,.5f,0,1);
-                case 5: return new float4(.5f,.5f,.5f,1);
+            switch (idx % 6)
+            {
+                case 0: return new float4(0, 0, 0, 1);
+                case 1: return new float4(0, 0, .5f, 1);
+                case 2: return new float4(0, 0, 1, 1);
+                case 3: return new float4(0, .5f, 1, 1);
+                case 4: return new float4(0, .5f, 0, 1);
+                case 5: return new float4(.5f, .5f, .5f, 1);
                 default: return new float4(1);
             }
         }
+
 #endif
 
         // ---------------- shadow map ----------------------------------------------------------------------------------------------------------------------
-        public unsafe static void EncodeShadowMap(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, 
-                                                  int startIndex, int indexCount, byte flipCulling, float4 bias)
+        public unsafe static void EncodeShadowMap(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx,
+            int startIndex, int indexCount, byte flipCulling, float4 bias)
         {
             ulong state = (ulong)(bgfx.StateFlags.WriteZ | bgfx.StateFlags.DepthTestLess | bgfx.StateFlags.CullCcw);
             if (flipCulling != 0) state = FlipCulling(state);
@@ -55,10 +57,10 @@ namespace Unity.Tiny.Rendering
             bgfx.encoder_set_uniform(encoder, sys->m_shadowMapShader.m_uniformDebugColor, &cd, 1);
 #endif
             bgfx.encoder_set_state(encoder, state, 0);
-            unsafe { fixed (float4x4* p = &tx) bgfx.encoder_set_transform(encoder, p, 1); }
+            unsafe { fixed(float4x4* p = &tx) bgfx.encoder_set_transform(encoder, p, 1); }
             mesh.SetForSubmit(encoder, startIndex, indexCount);
             bgfx.encoder_set_uniform(encoder, sys->m_shadowMapShader.m_uniformBias, &bias, 1);
-            bgfx.encoder_submit(encoder, viewId, sys->m_shadowMapShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_shadowMapShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- debug line rendering helper ----------------------------------------------------------------------------------------------------------------------
@@ -76,11 +78,11 @@ namespace Unity.Tiny.Rendering
             bool isinside1 = p1[coord] < p1.w;
             if (isinside0 && isinside1) // no clipping
                 return true;
-            if (!isinside0 && !isinside1) // all out 
+            if (!isinside0 && !isinside1) // all out
                 return false;
             float4 d = p1 - p0;
             float t = (p0[coord] - p0.w) / (d.w - d[coord]); // p = p0 + d * t && p.z = p.w
-            if (!(t >= 0.0f && t <= 1.0f)) // can happen when d.w==d[coord] 
+            if (!(t >= 0.0f && t <= 1.0f)) // can happen when d.w==d[coord]
                 return false;
             float4 p = p0 + d * t;
             if (!isinside0) p0 = p;
@@ -94,11 +96,11 @@ namespace Unity.Tiny.Rendering
             bool isinside1 = p1[coord] >= -p1.w;
             if (isinside0 && isinside1) // no clipping
                 return true;
-            if (!isinside0 && !isinside1) // all out 
+            if (!isinside0 && !isinside1) // all out
                 return false;
             float4 d = p1 - p0;
             float t = (p0[coord] + p0.w) / (-d.w - d[coord]); // p = p0 + d * t && p[coord] = -p.w
-            if (!(t >= 0.0f && t <= 1.0f)) // can happen when d.w==d[coord] 
+            if (!(t >= 0.0f && t <= 1.0f)) // can happen when d.w==d[coord]
                 return false;
             float4 p = p0 + d * t;
             if (!isinside0) p0 = p;
@@ -109,12 +111,13 @@ namespace Unity.Tiny.Rendering
         public static unsafe void EncodeLine(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, float3 p0, float3 p1, float4 color, float2 width, ref float4x4 objTx, ref float4x4 viewTx, ref float4x4 projTx)
         {
             float4 p0t = math.mul(projTx,
-                         math.mul(viewTx,
-                         math.mul(objTx, new float4(p0, 1))));
+                math.mul(viewTx,
+                    math.mul(objTx, new float4(p0, 1))));
             float4 p1t = math.mul(projTx,
-                         math.mul(viewTx,
-                         math.mul(objTx, new float4(p1, 1))));
-            for (int i = 0; i < 3; i++) { // really only need to clip z near, but clip all to make sure clipping works
+                math.mul(viewTx,
+                    math.mul(objTx, new float4(p1, 1))));
+            for (int i = 0; i < 3; i++)   // really only need to clip z near, but clip all to make sure clipping works
+            {
                 if (!ClipLinePositive(ref p0t, ref p1t, i))
                     return;
                 if (!ClipLineNegative(ref p0t, ref p1t, i))
@@ -138,10 +141,10 @@ namespace Unity.Tiny.Rendering
         {
             int nv = (int)mesh.Mesh.Value.Vertices.Length;
             LitVertex* vertices = (LitVertex*)mesh.Mesh.Value.Vertices.GetUnsafePtr();
-            for (int i = 0; i < nv; i++) {
+            for (int i = 0; i < nv; i++)
+            {
                 EncodeLine(sys, encoder, viewId, vertices[i].Position, vertices[i].Position + vertices[i].Normal * length, new float4(0, 0, 1, 1), width, ref objTx, ref viewTx, ref projTx);
                 EncodeLine(sys, encoder, viewId, vertices[i].Position, vertices[i].Position + vertices[i].Tangent * length, new float4(1, 0, 0, 1), width, ref objTx, ref viewTx, ref projTx);
-                EncodeLine(sys, encoder, viewId, vertices[i].Position, vertices[i].Position + vertices[i].BiTangent * length, new float4(0, 1, 0, 1), width, ref objTx, ref viewTx, ref projTx);
             }
         }
 
@@ -150,11 +153,12 @@ namespace Unity.Tiny.Rendering
             bgfx.TransientIndexBuffer tib;
             bgfx.TransientVertexBuffer tvb;
             int ni = (n / 4) * 6;
-            if (!bgfx.alloc_transient_buffers(&tvb, sys->m_simpleVertexBufferDecl, (uint)n, &tib, (uint)ni))
+            if (!bgfx.alloc_transient_buffers(&tvb, &sys->m_simpleVertexBufferDecl, (uint)n, &tib, (uint)ni))
                 throw new InvalidOperationException("Out of transient bgfx memory!");
             UnsafeUtility.MemCpy((SimpleVertex*)tvb.data, vertices, sizeof(SimpleVertex) * n);
             ushort* indices = (ushort*)tib.data;
-            for (int i = 0; i < n; i += 4) {
+            for (int i = 0; i < n; i += 4)
+            {
                 indices[0] = (ushort)i; indices[1] = (ushort)(i + 1); indices[2] = (ushort)(i + 2);
                 indices[3] = (ushort)(i + 2); indices[4] = (ushort)(i + 3); indices[5] = (ushort)i;
                 indices += 6;
@@ -165,13 +169,13 @@ namespace Unity.Tiny.Rendering
             // material uniforms setup
             ulong state = (ulong)(bgfx.StateFlags.DepthTestLess | bgfx.StateFlags.WriteRgb) | RendererBGFXStatic.MakeBGFXBlend(bgfx.StateFlags.BlendOne, bgfx.StateFlags.BlendInvSrcAlpha);
             bgfx.encoder_set_state(encoder, state, 0);
-            bgfx.encoder_submit(encoder, viewId, sys->m_lineShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_lineShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- simple, lit, with mesh ----------------------------------------------------------------------------------------------------------------------
         public unsafe static void SubmitLitDirect(RendererBGFXInstance *sys, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx,
-                                                 ref LitMaterialBGFX mat, ref LightingBGFX lighting,
-                                                 ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling)
+            ref LitMaterialBGFX mat, ref LightingBGFX lighting,
+            ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling)
         {
             bgfx.Encoder* encoder = bgfx.encoder_begin(false);
             LightingViewSpaceBGFX vsLight = default;
@@ -192,84 +196,83 @@ namespace Unity.Tiny.Rendering
 
         private unsafe static void EncodeMappedLight(bgfx.Encoder* encoder, ref MappedLightBGFX light, ref LitShader.MappedLight shader, byte samplerOffset, float4 viewPosOrDir)
         {
-            fixed (float4x4* p = &light.projection)
-                bgfx.encoder_set_uniform(encoder, shader.m_uniformMatrix, p, 1);
-            fixed (float4* p = &light.color_invrangesqr)
-                bgfx.encoder_set_uniform(encoder, shader.m_uniformColorIVR, p, 1);
-            fixed (float4* p = &light.mask)
-                bgfx.encoder_set_uniform(encoder, shader.m_uniformLightMask, p, 1);
+            fixed(float4x4* p = &light.projection)
+            bgfx.encoder_set_uniform(encoder, shader.m_uniformMatrix, p, 1);
+            fixed(float4* p = &light.color_invrangesqr)
+            bgfx.encoder_set_uniform(encoder, shader.m_uniformColorIVR, p, 1);
+            fixed(float4* p = &light.mask)
+            bgfx.encoder_set_uniform(encoder, shader.m_uniformLightMask, p, 1);
             bgfx.encoder_set_uniform(encoder, shader.m_uniformViewPosOrDir, &viewPosOrDir, 1);
             bgfx.encoder_set_texture(encoder, (byte)(6 + samplerOffset), shader.m_samplerShadow, light.shadowMap, UInt32.MaxValue);
-            
         }
 
         public unsafe static void EncodeLit(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx,
-                                                 ref LitMaterialBGFX mat, ref LightingBGFX lighting,
-                                                 ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling, ref LightingViewSpaceBGFX viewSpaceLightCache)
+            ref LitMaterialBGFX mat, ref LightingBGFX lighting,
+            ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling, ref LightingViewSpaceBGFX viewSpaceLightCache)
         {
             ulong state = mat.state;
             if (flipCulling != 0)
                 state = FlipCulling(state);
             bgfx.encoder_set_state(encoder, state, 0);
-            fixed (float4x4* p = &tx)
-                bgfx.encoder_set_transform(encoder, p, 1);
-            float3x3 minvt = math.transpose(math.inverse(new float3x3(tx.c0.xyz, tx.c1.xyz, tx.c2.xyz))); 
+            fixed(float4x4* p = &tx)
+            bgfx.encoder_set_transform(encoder, p, 1);
+            float3x3 minvt = math.transpose(math.inverse(new float3x3(tx.c0.xyz, tx.c1.xyz, tx.c2.xyz)));
             //float3x3 minvt = new float3x3(tx.c0.xyz, tx.c1.xyz, tx.c2.xyz);
             bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformModelInverseTranspose, &minvt, 1);
             mesh.SetForSubmit(encoder, startIndex, indexCount);
             // material uniforms setup
-            fixed (float4* p = &mat.constAlbedo_Opacity)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformAlbedoOpacity, p, 1);
-            fixed (float4* p = &mat.constMetal_Smoothness)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformMetalSmoothness, p, 1);
-            fixed (float4* p = &mat.constEmissive_normalMapZScale)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformEmissiveNormalZScale, p, 1);
+            fixed(float4* p = &mat.constAlbedo_Opacity)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformAlbedoOpacity, p, 1);
+            fixed(float4* p = &mat.constMetal_Smoothness_Billboarded)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformMetalSmoothnessBillboarded, p, 1);
+            fixed(float4* p = &mat.constEmissive_normalMapZScale)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformEmissiveNormalZScale, p, 1);
             float4 debugVect = sys->m_outputDebugSelect;
             bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformOutputDebugSelect, &debugVect, 1);
-            fixed (float4* p = &mat.smoothness)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformSmoothness, p, 1);
-            
-            // textures 
+            fixed(float4* p = &mat.smoothness)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformSmoothness, p, 1);
+
+            // textures
             bgfx.encoder_set_texture(encoder, 0, sys->m_litShader.m_samplerAlbedoOpacity, mat.texAlbedoOpacity, UInt32.MaxValue);
             bgfx.encoder_set_texture(encoder, 1, sys->m_litShader.m_samplerMetal, mat.texMetal, UInt32.MaxValue);
             bgfx.encoder_set_texture(encoder, 2, sys->m_litShader.m_samplerNormal, mat.texNormal, UInt32.MaxValue);
-            
+
             bgfx.encoder_set_texture(encoder, 4, sys->m_litShader.m_samplerEmissive, mat.texEmissive, UInt32.MaxValue);
 
-            fixed (float4* p = &mat.mainTextureScaleTranslate)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformTexMad, p, 1);
+            fixed(float4* p = &mat.mainTextureScaleTranslate)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformTexMad, p, 1);
 
             // ambient
-            fixed (float4* p = &lighting.ambient)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformAmbient, p, 1);
+            fixed(float4* p = &lighting.ambient)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformAmbient, p, 1);
 
-            // transform lighting to view space, if needed: this only needs to re-compute if the viewId changed 
+            // transform lighting to view space, if needed: this only needs to re-compute if the viewId changed
             // also the lighting view space is per-thread, hence it is passed in
             lighting.TransformToViewSpace(ref viewTx, ref viewSpaceLightCache, viewId);
 
             // dir or point lights
-            fixed (float* p = viewSpaceLightCache.podl_positionOrDirViewSpace)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_simplelightPosOrDir, p, (ushort)lighting.numPointOrDirLights);
-            fixed (float* p = lighting.podl_colorIVR)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_simplelightColorIVR, p, (ushort)lighting.numPointOrDirLights);
+            fixed(float* p = viewSpaceLightCache.podl_positionOrDirViewSpace)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_simplelightPosOrDir, p, (ushort)lighting.numPointOrDirLights);
+            fixed(float* p = lighting.podl_colorIVR)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_simplelightColorIVR, p, (ushort)lighting.numPointOrDirLights);
 
-            // mapped lights (always have to set those or there are undefined samplers) 
+            // mapped lights (always have to set those or there are undefined samplers)
             EncodeMappedLight(encoder, ref lighting.mappedLight0, ref sys->m_litShader.m_mappedLight0, 0, viewSpaceLightCache.mappedLight0_viewPosOrDir); // sampler 6
             EncodeMappedLight(encoder, ref lighting.mappedLight1, ref sys->m_litShader.m_mappedLight1, 1, viewSpaceLightCache.mappedLight1_viewPosOrDir); // sampler 7
-            fixed (float4* p = &lighting.mappedLight01sis)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_texShadow01sis, p, 1);
+            fixed(float4* p = &lighting.mappedLight01sis)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_texShadow01sis, p, 1);
 
             // csm
-            fixed (float4* p = &viewSpaceLightCache.csmLight_viewPosOrDir)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_dirCSM,  p, 1);
-            fixed (float* p = lighting.csmOffsetScale)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_offsetScaleCSM, p, 4);
-            fixed (float4* p = &lighting.csmLight.color_invrangesqr)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_colorCSM, p, 1);
-            fixed (float4x4* p = &lighting.csmLight.projection)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_matrixCSM, p, 1);
-            fixed (float4* p = &lighting.csmLightsis)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_sisCSM, p, 1);
+            fixed(float4* p = &viewSpaceLightCache.csmLight_viewPosOrDir)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_dirCSM,  p, 1);
+            fixed(float* p = lighting.csmOffsetScale)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_offsetScaleCSM, p, 4);
+            fixed(float4* p = &lighting.csmLight.color_invrangesqr)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_colorCSM, p, 1);
+            fixed(float4x4* p = &lighting.csmLight.projection)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_matrixCSM, p, 1);
+            fixed(float4* p = &lighting.csmLightsis)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_sisCSM, p, 1);
 
             bgfx.encoder_set_texture(encoder, 5, sys->m_litShader.m_samplerShadowCSM, lighting.csmLight.shadowMap, UInt32.MaxValue);
 
@@ -277,13 +280,13 @@ namespace Unity.Tiny.Rendering
             bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_numLights, &numlights, 1);
 
             // fog
-            fixed (float4* p = &lighting.fogColor)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformFogColor, p, 1);
-            fixed (float4* p = &lighting.fogParams)
-                bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformFogParams, p, 1);
+            fixed(float4* p = &lighting.fogColor)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformFogColor, p, 1);
+            fixed(float4* p = &lighting.fogParams)
+            bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformFogParams, p, 1);
 
             // submit
-            bgfx.encoder_submit(encoder, viewId, sys->m_litShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_litShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- simple, unlit, with mesh ----------------------------------------------------------------------------------------------------------------------
@@ -297,16 +300,18 @@ namespace Unity.Tiny.Rendering
         public static unsafe void EncodeSimple(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, ref SimpleMaterialBGFX mat, int startIndex, int indexCount, byte flipCulling)
         {
             bgfx.set_state(mat.state, 0);
-            fixed (float4x4* p = &tx)
-                bgfx.encoder_set_transform(encoder, p, 1);
+            fixed(float4x4* p = &tx)
+            bgfx.encoder_set_transform(encoder, p, 1);
             mesh.SetForSubmit(encoder, startIndex, indexCount);
             // material uniforms setup
-            fixed (float4* p = &mat.constAlbedo_Opacity)
-                bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformColor0, p, 1);
-            fixed (float4* p = &mat.mainTextureScaleTranslate)
-                bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformTexMad, p, 1);
+            fixed(float4* p = &mat.constAlbedo_Opacity)
+            bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformColor0, p, 1);
+            fixed(float4* p = &mat.mainTextureScaleTranslate)
+            bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformTexMad, p, 1);
+            fixed(float4* p = &mat.billboarded)
+            bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformBillboarded, p, 1);
             bgfx.encoder_set_texture(encoder, 0, sys->m_simpleShader.m_samplerTexColor0, mat.texAlbedoOpacity, UInt32.MaxValue);
-            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- blit ----------------------------------------------------------------------------------------------------------------------
@@ -315,16 +320,18 @@ namespace Unity.Tiny.Rendering
             unsafe {
                 bgfx.Encoder* encoder = bgfx.encoder_begin(false);
                 bgfx.set_state((uint)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA), 0);
-                fixed (float4x4* p = &tx)
-                    bgfx.encoder_set_transform(encoder, p, 1);
+                fixed(float4x4* p = &tx)
+                bgfx.encoder_set_transform(encoder, p, 1);
                 sys->m_quadMesh.SetForSubmit(encoder, 0, 6);
                 // material uniforms setup
                 bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformColor0, &color, 1);
                 float4 noTexMad = new float4(1, 1, 0, 0);
                 bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformTexMad, &noTexMad, 1);
                 bgfx.encoder_set_texture(encoder, 0, sys->m_simpleShader.m_samplerTexColor0, tetxure, UInt32.MaxValue);
+                fixed(float4* p = &float4.zero)
+                bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformBillboarded, p, 1);
                 // submit
-                bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, false);
+                bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
                 bgfx.encoder_end(encoder);
             }
         }
@@ -335,8 +342,8 @@ namespace Unity.Tiny.Rendering
             unsafe {
                 bgfx.Encoder* encoder = bgfx.encoder_begin(false);
                 bgfx.encoder_set_state(encoder, (uint)(bgfx.StateFlags.WriteRgb | bgfx.StateFlags.WriteA), 0);
-                fixed (float4x4* p = &tx)
-                    bgfx.encoder_set_transform(encoder, p, 1);
+                fixed(float4x4* p = &tx)
+                bgfx.encoder_set_transform(encoder, p, 1);
                 sys->m_quadMesh.SetForSubmit(encoder, 0, 6);
                 // material uniforms setup
                 bgfx.encoder_set_uniform(encoder, sys->m_blitShader.m_colormul, &mulColor, 1);
@@ -347,7 +354,7 @@ namespace Unity.Tiny.Rendering
                 float4 s = new float4(fromSRGB ? 1.0f : 0.0f, toSRGB ? 1.0f : 0.0f, reinhard, premultiply ? 1.0f : 0.0f);
                 bgfx.encoder_set_uniform(encoder, sys->m_blitShader.m_decodeSRGB_encodeSRGB_reinhard_premultiply, &s, 1);
                 // submit
-                bgfx.encoder_submit(encoder, viewId, sys->m_blitShader.m_prog, 0, false);
+                bgfx.encoder_submit(encoder, viewId, sys->m_blitShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
                 bgfx.encoder_end(encoder);
             }
         }
@@ -376,12 +383,13 @@ namespace Unity.Tiny.Rendering
         {
             bgfx.TransientIndexBuffer tib;
             bgfx.TransientVertexBuffer tvb;
-            if (!bgfx.alloc_transient_buffers(&tvb, sys->m_simpleVertexBufferDecl, (uint)nvertices, &tib, (uint)nindices)) {
+            if (!bgfx.alloc_transient_buffers(&tvb, &sys->m_simpleVertexBufferDecl, (uint)nvertices, &tib, (uint)nindices))
+            {
 #if DEBUG
-                // TODO: throw or ignore draw? 
+                // TODO: throw or ignore draw?
                 throw new InvalidOperationException("Out of transient bgfx memory!");
 #else
-                return false; 
+                return false;
 #endif
             }
             bgfx.encoder_set_transient_index_buffer(encoder, &tib, 0, (uint)nindices);
@@ -396,18 +404,20 @@ namespace Unity.Tiny.Rendering
             // must call EncodeSimpleTransientAlloc before
             // material uniforms setup
             bgfx.encoder_set_state(encoder, state, 0);
-            fixed (float4x4* p = &tx)
-                bgfx.encoder_set_transform(encoder, p, 1);
+            fixed(float4x4* p = &tx)
+            bgfx.encoder_set_transform(encoder, p, 1);
             bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformColor0, &color, 1);
             float4 noTexMad = new float4(1, 1, 0, 0);
             bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformTexMad, &noTexMad, 1);
+            fixed(float4* p = &float4.zero)
+            bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformBillboarded, p, 1);
             bgfx.encoder_set_texture(encoder, 0, sys->m_simpleShader.m_samplerTexColor0, texture, UInt32.MaxValue);
-            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, false);
+            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
         }
 
         public static unsafe void EncodeSimpleTransient(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, SimpleVertex* vertices, int nvertices, ushort* indices, int nindices, ref float4x4 tx, float4 color, bgfx.TextureHandle texture, ulong state)
         {
-            // upload 
+            // upload
             SimpleVertex* destVertices = null;
             ushort* destIndices = null;
             if (!EncodeSimpleTransientAlloc(sys, encoder, nindices, nvertices, &destVertices, &destIndices))

@@ -110,7 +110,7 @@ public class BgfxBuild
         Backend.Current.Register(BgfxArtifact);
         BgfxRoot = BgfxArtifact.Path;
 
-        //BgfxRoot = @"C:\Users\sebastianm\gits\bgfxroot";
+        //BgfxRoot = @"C:\Users\sebastianm\gits\bgfx-root";
         //useLocalBgfx = true;
 
         var bx = BgfxRoot.Combine("bx");
@@ -190,11 +190,14 @@ public class BgfxBuild
 
         BgfxLib.Defines.Add(c => ((DotsRuntimeNativeProgramConfiguration)c).CSharpConfig.Defines.Contains("RENDERING_ENABLE_TRACE"), "BGFX_CONFIG_DEBUG=1");
         BgfxLib.Defines.Add(c => c.ToolChain is WindowsToolchain, "_CRT_SECURE_NO_WARNINGS");
-
+        //BgfxLib.Defines.Add("BGFX_CONFIG_DEBUG_UNIFORM=0");
         if (!useLocalBgfx)
         {
             // when using bgfx from stevedore, this requires pix3.h which we don't distribute
             BgfxLib.Defines.Add(c => c.Platform is WindowsPlatform, "BGFX_CONFIG_DEBUG_ANNOTATION=0");
+        } else {
+            BgfxLib.Defines.Add(c => c.Platform is WindowsPlatform, "BGFX_CONFIG_DEBUG_ANNOTATION=0");
+            ///BgfxLib.IncludeDirectories.Add(bgfx.Combine("3rdparty/dxsdk"));
         }
 
         BgfxLib.Defines.Add("BGFX_CONFIG_MAX_BONES=4");

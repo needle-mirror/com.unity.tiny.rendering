@@ -16,6 +16,10 @@ namespace Unity.TinyConversion
                 return;
             if (!buildConfiguration.TryGetComponent<DotsRuntimeBuildProfile>(out var profile))
                 return;
+            if (!buildConfiguration.TryGetComponent<DotsRuntimeRootAssembly>(out var rootAssembly))
+                return;
+            if (!rootAssembly.TypeCache.HasType<PrecompiledShaderData>())
+                return;
 
             bgfx.RendererType[] types = GetShaderFormat(profile.Target);
 

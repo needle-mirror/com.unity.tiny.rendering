@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Tiny.Rendering;
@@ -13,6 +13,7 @@ namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectBeforeConversionGroup))]
     [UpdateAfter(typeof(TransformConversion))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class LightConversion : GameObjectConversionSystem
     {
         void CheckLightLimitations()
@@ -32,7 +33,7 @@ namespace Unity.TinyConversion
                     {
                         if (cascadeComp != null)
                         {
-                            numberOfCascadedShadowMappedLights++;      
+                            numberOfCascadedShadowMappedLights++;
                         }
                         else
                         {
@@ -40,7 +41,7 @@ namespace Unity.TinyConversion
                         }
                     }
                 }
-                if(uLight.type != LightType.Directional && cascadeComp != null)
+                if (uLight.type != LightType.Directional && cascadeComp != null)
                     throw new ArgumentException($"The {nameof(Tiny.Authoring.CascadedShadowMappedLight)} component is only supported for Directional Lights. Use it on only one Directional light.");
             });
 
@@ -50,14 +51,6 @@ namespace Unity.TinyConversion
                 throw new ArgumentException($"Only a maximum of {LightingBGFX.maxMappedLights} shadow mapped lights is supported. Please reduce the number of shadow mapped lights (directional or spot) in your scene.");
             if (numberOfCascadedShadowMappedLights > LightingBGFX.maxCsmLights)
                 throw new ArgumentException($"Only a maximum of {LightingBGFX.maxCsmLights} cascaded shadow mapped directional lights is supported. Use only one {nameof(Tiny.Authoring.CascadedShadowMappedLight)} component in your scene on a Directional Light.");
-        }
-
-        public override bool ShouldRunConversionSystem()
-        {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
         }
 
         protected override void OnUpdate()
@@ -86,9 +79,9 @@ namespace Unity.TinyConversion
                         var authoComp = uLight.gameObject.GetComponent<Tiny.Authoring.AutoMovingDirectionalLight>();
                         if (authoComp == null)
                             Debug.LogWarning($"The gameobject {uLight.gameObject.name} has a directional light using shadow mapping but does not have a {nameof(Tiny.Authoring.AutoMovingDirectionalLight)} component. The {nameof(Tiny.Authoring.AutoMovingDirectionalLight)} component will automatically update the directional light's position and size based on its camera frustrum for shadow mapping. Please add a {nameof(Tiny.Authoring.AutoMovingDirectionalLight)} component");
-                    }         
+                    }
                 }
-                else if(uLight.type == LightType.Spot)
+                else if (uLight.type == LightType.Spot)
                 {
                     if (uLight.shadows == LightShadows.None)
                         Debug.LogWarning("Spot lights with no shadows are not supported. Set a shadow type in light: " + uLight.name);
@@ -106,7 +99,7 @@ namespace Unity.TinyConversion
                         });
                     }
                 }
-                if(uLight.shadows != LightShadows.None)
+                if (uLight.shadows != LightShadows.None)
                 {
                     int shadowMapResolution = 1024;
                     if (uLight.type == LightType.Directional)
@@ -123,7 +116,7 @@ namespace Unity.TinyConversion
                     light.clipZNear = uLight.shadowNearPlane;
                     DstEntityManager.SetComponentData(eLighting, light);
                 }
-                
+
                 if (DstEntityManager.HasComponent<NonUniformScale>(eLighting))
                     DstEntityManager.SetComponentData(eLighting, new NonUniformScale(){Value = new float3(1f)});
             });

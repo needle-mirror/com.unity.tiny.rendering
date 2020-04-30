@@ -1,4 +1,4 @@
-﻿using Unity.Tiny.Rendering;
+using Unity.Tiny.Rendering;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -35,6 +35,7 @@ namespace Unity.TinyConversion
                 Debug.Assert((long)&(p->Position) - (long)p == 0);
                 Debug.Assert((long)&(p->TexCoord0) - (long)p == 12);
                 Debug.Assert((long)&(p->Color) - (long)p == 20);
+                Debug.Assert((long)&(p->BillboardPos) - (long)p == 36);
             }
         }
 
@@ -67,6 +68,11 @@ namespace Unity.TinyConversion
                 //Vertex color is not supported in URP lit shader, override to white for now
                 float4 albedo = new float4(1);
                 UnsafeUtility.MemCpyStride(dest + offset, sizeof(SimpleVertex), &albedo, 0, sizeof(float4), Positions.Length);
+                offset += sizeof(float4);
+
+                //Billboard position not present in UnityEngine.Mesh
+                float3 billboardPos = float3.zero;
+                UnsafeUtility.MemCpyStride(dest + offset, sizeof(SimpleVertex), &billboardPos, 0, sizeof(float3), Positions.Length);
 
                 //Copy indices
                 if (Indices.Length != 0)

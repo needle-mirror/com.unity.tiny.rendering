@@ -12,16 +12,9 @@ using Unity.Entities.Runtime.Build;
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectDeclareReferencedObjectsGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class MeshRendererDeclareAssets : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
-        {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         protected override void OnUpdate()
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
@@ -44,14 +37,14 @@ namespace Unity.TinyConversion
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
     [UpdateBefore(typeof(MeshConversion))]
     [UpdateAfter(typeof(MaterialConversion))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class MeshRendererConversion : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
+        void CheckForSubMeshLimitations(Mesh uMesh, int index)
         {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
+            uint indexCount = uMesh.GetIndexCount(index);
+            if (indexCount > int.MaxValue)
+                throw new ArgumentException($"The maximum number of indices supported per submesh is {int.MaxValue} and the submesh index {index} in {uMesh.name} has {indexCount} indices. Please use a lighter submesh instead.");
         }
 
         protected override void OnUpdate()
@@ -73,6 +66,7 @@ namespace Unity.TinyConversion
                     // We only handle these two materials here
                     if (isLit || isSimple)
                     {
+                        CheckForSubMeshLimitations(uMesh, i);
                         Entity subMeshRenderer = ConvertSubmesh(this, uMeshRenderer, uMesh, meshEntity, i, targetMaterial);
 
                         if (isLit)
@@ -107,7 +101,7 @@ namespace Unity.TinyConversion
         }
 
         public static Entity ConvertSubmesh(GameObjectConversionSystem gsys, UnityEngine.MeshRenderer uMeshRenderer,
-                                            UnityEngine.Mesh uMesh, Entity meshEntity, int subMeshIndex, Entity materialEntity)
+            UnityEngine.Mesh uMesh, Entity meshEntity, int subMeshIndex, Entity materialEntity)
         {
             Entity primaryMeshRenderer = gsys.GetPrimaryEntity(uMeshRenderer);
             Entity meshRendererEntity = primaryMeshRenderer;
@@ -122,8 +116,8 @@ namespace Unity.TinyConversion
             {
                 mesh = meshEntity,
                 material = materialEntity,
-                startIndex = Convert.ToUInt16(uMesh.GetIndexStart(subMeshIndex)),
-                indexCount = Convert.ToUInt16(uMesh.GetIndexCount(subMeshIndex))
+                startIndex = Convert.ToInt32(uMesh.GetIndexStart(subMeshIndex)),
+                indexCount = Convert.ToInt32(uMesh.GetIndexCount(subMeshIndex))
             });
             gsys.DstEntityManager.AddComponentData(meshRendererEntity, new WorldBounds());
 

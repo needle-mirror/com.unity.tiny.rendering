@@ -13,6 +13,7 @@ namespace Unity.Tiny.Rendering
         public float3 Position;
         public float2 TexCoord0;
         public float4 Color;
+        public float3 BillboardPos;
     }
 
     /// <summary>
@@ -24,14 +25,14 @@ namespace Unity.Tiny.Rendering
         public float2 TexCoord0;
         public float3 Normal;
         public float3 Tangent;          // TODO: float4 w is bitangent sign
-        public float3 BiTangent;        // TODO: remove
-        public float4 Albedo_Opacity;   // TODO: 8/16 bit packed 
-        public float2 Metal_Smoothness; // TODO: 8/16 bit packed 
+        public float3 BillboardPos;
+        public float4 Albedo_Opacity;   // TODO: 8/16 bit packed
+        public float2 Metal_Smoothness; // TODO: 8/16 bit packed
     }
 
     /// <summary>
     /// Mesh structure (used for 3D cases)
-    /// This is a blob asset, reference by the LitMeshRenderData component 
+    /// This is a blob asset, reference by the LitMeshRenderData component
     /// </summary>
     public struct LitMeshData
     {
@@ -41,7 +42,7 @@ namespace Unity.Tiny.Rendering
 
     /// <summary>
     /// Simple mesh data. (Use with Simple shader and 2D cases)
-    /// This is a blob asset, reference by the SimpleMeshRenderData component 
+    /// This is a blob asset, reference by the SimpleMeshRenderData component
     /// </summary>
     public struct SimpleMeshData
     {
@@ -71,18 +72,18 @@ namespace Unity.Tiny.Rendering
     /// Needs a MeshBounds next to it
     public struct DynamicMeshData : IComponentData
     {
-        public bool Dirty;                  // set to true to trigger re-upload, will revert to false after upload 
+        public bool Dirty;                  // set to true to trigger re-upload, will revert to false after upload
         public bool UseDynamicGPUBuffer;    // allocate a dynamic buffer on the gpu, only use this if you expect buffer contents to change every frame
         public int VertexCapacity;          // capacity for gpu buffer, must be >= NumVertices. Increasing capacity will require re-allocating buffers
         public int IndexCapacity;           // capacity for gpu buffer, must be >= NumIndices. Increasing capacity will require re-allocating buffers
-        public int NumVertices;             // number of vertices to copy from the DynamicLitVertex or DynamicSimpleVertex buffer located next to this component 
+        public int NumVertices;             // number of vertices to copy from the DynamicLitVertex or DynamicSimpleVertex buffer located next to this component
         public int NumIndices;              // number of indices to copy from the DynamicIndex next to this component
     }
 
     /// Must be placed next to a SimpleMeshRenderData, LitMeshRenderData or DynamicMeshData
     public struct MeshBounds : IComponentData
     {
-        public AABB Bounds; 
+        public AABB Bounds;
     }
 
     public struct DynamicLitVertex : IBufferElementData
@@ -99,5 +100,4 @@ namespace Unity.Tiny.Rendering
     {
         public SimpleVertex Value;
     }
-
 }

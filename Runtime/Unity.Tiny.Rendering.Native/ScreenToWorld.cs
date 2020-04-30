@@ -21,7 +21,7 @@ namespace Unity.Tiny.Rendering
     public struct ScreenToWorldRoot : IComponentData
     {
         public ScreenToWorldId id;
-        public Entity pass;         // first pass, used for grabbing the viewport transform from. 
+        public Entity pass;         // first pass, used for grabbing the viewport transform from.
     }
 
     // a list of pickable passes, in order, next to pickable root entity
@@ -35,7 +35,7 @@ namespace Unity.Tiny.Rendering
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     public class ScreenToWorld : SystemBase
     {
-        // inverse transform for a render pass, camera and projection, 
+        // inverse transform for a render pass, camera and projection,
         static public float4 InversePassTransform(float4 pos, in RenderPass pass)
         {
             pos *= pos.w;
@@ -78,15 +78,17 @@ namespace Unity.Tiny.Rendering
         public float2 AdjustInputPositionToPixels(float2 inputPos)
         {
             var di = GetSingleton<DisplayInfo>();
-            return inputPos * new float2(di.framebufferWidth / (float)di.width, di.framebufferHeight / (float)di.height);
+            var dpiScale = di.screenDpiScale > 0 ? di.screenDpiScale : 1;
+            return inputPos/dpiScale * new float2(di.framebufferWidth / (float) di.width, di.framebufferHeight / (float) di.height);
         }
 
         protected void FindPickRoot(out Entity eOutPickRoot, out Entity eOutPass, ScreenToWorldId id)
         {
             var ePickRoot = Entity.Null;
             var ePass = Entity.Null;
-            Entities.ForEach((Entity e, ref ScreenToWorldRoot root) => { 
-                if (root.id == id) {
+            Entities.ForEach((Entity e, ref ScreenToWorldRoot root) => {
+                if (root.id == id)
+                {
                     Assert.IsTrue(ePickRoot == Entity.Null); // Multiple roots with same pick id found
                     ePickRoot = e;
                     ePass = root.pass;
@@ -107,9 +109,11 @@ namespace Unity.Tiny.Rendering
                 return new float3(0);
             // apply all the pass transforms back to front, if there are any
             var pp = new float4(worldPos, 1.0f);
-            if (EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot)) {
+            if (EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot))
+            {
                 var l = EntityManager.GetBuffer<ScreenToWorldPassList>(ePickRoot);
-                for (int i = l.Length - 1; i >= 0; i--) {
+                for (int i = l.Length - 1; i >= 0; i--)
+                {
                     var lp = EntityManager.GetComponentData<RenderPass>(l[i].pass);
                     pp = PassTransform(pp, lp);
                 }
@@ -121,7 +125,7 @@ namespace Unity.Tiny.Rendering
             return pp.xyz;
         }
 
-        // screenPos is in pixels. Note that this is pixels, not points. So for platforms where pixels != points, this need to be adjusted first. 
+        // screenPos is in pixels. Note that this is pixels, not points. So for platforms where pixels != points, this need to be adjusted first.
         // depth is normalized -1..1, where -1 is near and 1 far
         public float3 ScreenSpaceToWorldSpace(float2 screenPos, float normalizedZ, ScreenToWorldId id)
         {
@@ -137,7 +141,8 @@ namespace Unity.Tiny.Rendering
             if (!EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot))
                 return pp2.xyz;
             var l = EntityManager.GetBuffer<ScreenToWorldPassList>(ePickRoot);
-            for (int i = 0; i < l.Length; i++) {
+            for (int i = 0; i < l.Length; i++)
+            {
                 var lp = EntityManager.GetComponentData<RenderPass>(l[i].pass);
                 pp2 = InversePassTransform(pp2, lp);
             }
@@ -147,7 +152,8 @@ namespace Unity.Tiny.Rendering
 
         protected Entity CameraFromPass(Entity ePass)
         {
-            if (EntityManager.HasComponent<RenderPassUpdateFromCamera>(ePass)) {
+            if (EntityManager.HasComponent<RenderPassUpdateFromCamera>(ePass))
+            {
                 var rpufc = EntityManager.GetComponentData<RenderPassUpdateFromCamera>(ePass);
                 return rpufc.camera;
             }
@@ -163,9 +169,11 @@ namespace Unity.Tiny.Rendering
             Entity eC = CameraFromPass(ePass);
             if (eC != Entity.Null)
                 return eC;
-            if (EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot)) {
+            if (EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot))
+            {
                 var l = EntityManager.GetBuffer<ScreenToWorldPassList>(ePickRoot);
-                for (int i = 0; i < l.Length; i++) {
+                for (int i = 0; i < l.Length; i++)
+                {
                     eC = CameraFromPass(l[i].pass);
                     if (eC != Entity.Null)
                         return eC;
@@ -175,7 +183,7 @@ namespace Unity.Tiny.Rendering
         }
 
         // gets the transform and returns a plane at distance distanceToCamera in front of the camera.
-        // if the camera entity is Null, try to find the camera for the ScreenToWorld Main Camera 
+        // if the camera entity is Null, try to find the camera for the ScreenToWorld Main Camera
         // the plane is centered on the camera view axis and up and left are normalized
         public void GetWorldSpaceCameraPlane(out float3 pos, out float3 up, out float3 left, float distanceToCamera, Entity eCam = default)
         {
@@ -207,7 +215,7 @@ namespace Unity.Tiny.Rendering
             direction = math.normalizesafe(direction);
         }
 
-        // start with an input position (in pixels)and return a world space point, which is distanceToCamera world space units in front of the picking camera    
+        // start with an input position (in pixels)and return a world space point, which is distanceToCamera world space units in front of the picking camera
         public float3 ScreenSpaceToWorldSpacePos(float2 screenPos, float distanceToCamera, ScreenToWorldId id = ScreenToWorldId.MainCamera)
         {
             float3 origin, direction;
@@ -224,7 +232,7 @@ namespace Unity.Tiny.Rendering
             ScreenSpaceToWorldSpaceRay(screenPos, out origin, out direction, id);
         }
 
-        // start with an input position (in points) and return a world space point, which is distanceToCamera world space units in front of the picking camera  
+        // start with an input position (in points) and return a world space point, which is distanceToCamera world space units in front of the picking camera
         public float3 InputPosToWorldSpacePos(float2 inputPos, float distanceToCamera, ScreenToWorldId id = ScreenToWorldId.MainCamera)
         {
             float2 screenPos = AdjustInputPositionToPixels(inputPos);
@@ -233,11 +241,8 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate()
         {
-            // TODO: if the transforms ever become a speed issue, we can cache 
-            //       the whole pipeline as premultiplies matrices here  
+            // TODO: if the transforms ever become a speed issue, we can cache
+            //       the whole pipeline as premultiplies matrices here
         }
     }
 }
-
-
-

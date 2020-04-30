@@ -9,6 +9,7 @@ using UnityEditor;
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectDeclareReferencedObjectsGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     class MaterialDeclareAssets : GameObjectConversionSystem
     {
         protected override void OnUpdate() =>
@@ -26,6 +27,7 @@ namespace Unity.TinyConversion
     }
 
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class MaterialConversion : GameObjectConversionSystem
     {
         private BlendOp GetBlending(float blend)
@@ -55,7 +57,7 @@ namespace Unity.TinyConversion
             //both = 0, back = 1, front = 2
             if (uMaterial.GetInt("_Cull") == 0)
                 return true;
-            else if(uMaterial.GetInt("_Cull") == 1)
+            else if (uMaterial.GetInt("_Cull") == 1)
             {
                 UnityEngine.Debug.LogWarning("Setting a value of Back for Render Face is not supported. Choose either Both or Front in material: " + uMaterial.name);
             }
@@ -79,7 +81,7 @@ namespace Unity.TinyConversion
 
             DstEntityManager.AddComponentData<SimpleMaterial>(entity, new SimpleMaterial()
             {
-                texAlbedoOpacity = GetTextureEntity(uMaterial, "_MainTex"),
+                texAlbedoOpacity = GetTextureEntity(uMaterial, "_BaseMap"),
                 constAlbedo = new float3(baseColor.r, baseColor.g, baseColor.b),
                 constOpacity = baseColor.a,
                 blend = GetBlending(uMaterial.GetFloat("_Blend")),
@@ -130,12 +132,11 @@ namespace Unity.TinyConversion
                 transparent = uMaterial.GetInt("_Surface") == 1,
                 smoothnessAlbedoAlpha = ContainsShaderKeyword(uMaterial, "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A"),
                 scale = new float2(textScale[0], textScale[1]),
-                offset = new float2( textTrans[0], 1 - textTrans[1]) // Invert the offset as well
+                offset = new float2(textTrans[0], 1 - textTrans[1])  // Invert the offset as well
             });
         }
 
-        // For now particles just use LitMaterial
-        private void ConvertParticleMaterial(Entity entity, Material uMaterial)
+        private void ConvertParticleLitMaterial(Entity entity, Material uMaterial)
         {
             //Do the conversion
             var texAlbedo = GetTextureEntity(uMaterial, "_BaseMap");
@@ -172,19 +173,12 @@ namespace Unity.TinyConversion
             });
         }
 
-        public override bool ShouldRunConversionSystem()
-        {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         internal enum SupportedMaterialType
         {
             Unlit,
             Lit,
-            Particle,
+            ParticleUnlit,
+            ParticleLit,
             Other,
             Unsupported
         }
@@ -197,8 +191,10 @@ namespace Unity.TinyConversion
                     return SupportedMaterialType.Unlit;
                 case "Universal Render Pipeline/Lit":
                     return SupportedMaterialType.Lit;
+                case "Universal Render Pipeline/Particles/Unlit":
+                    return SupportedMaterialType.ParticleUnlit;
                 case "Universal Render Pipeline/Particles/Lit":
-                    return SupportedMaterialType.Particle;
+                    return SupportedMaterialType.ParticleLit;
                 case "Sprites/Default": // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion
                 case "Universal Render Pipeline/2D/Sprite-Lit-Default":
                     return SupportedMaterialType.Other;
@@ -215,13 +211,14 @@ namespace Unity.TinyConversion
                 switch (GetMaterialType(uMaterial))
                 {
                     case SupportedMaterialType.Unlit:
+                    case SupportedMaterialType.ParticleUnlit:
                         ConvertUnlitMaterial(entity, uMaterial);
                         break;
                     case SupportedMaterialType.Lit:
                         ConvertLitMaterial(entity, uMaterial);
                         break;
-                    case SupportedMaterialType.Particle:
-                        ConvertParticleMaterial(entity, uMaterial);
+                    case SupportedMaterialType.ParticleLit:
+                        ConvertParticleLitMaterial(entity, uMaterial);
                         break;
                     case SupportedMaterialType.Other:
                         // Sprite material conversion is handled by Unity.U2D.Entities.MaterialProxyConversion

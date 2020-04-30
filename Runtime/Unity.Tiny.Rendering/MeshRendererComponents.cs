@@ -1,4 +1,4 @@
-﻿using Unity.Entities;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Unity.Tiny.Rendering
@@ -22,7 +22,7 @@ namespace Unity.Tiny.Rendering
     }
 
     /// <summary>
-    /// Component next to a MeshRenderer, indicating it is lit with the basic lit shader 
+    /// Component next to a MeshRenderer, indicating it is lit with the basic lit shader
     /// </summary>
     public struct LitMeshRenderer : IComponentData
     {

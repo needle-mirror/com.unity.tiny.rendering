@@ -34,10 +34,12 @@ namespace Unity.Tiny.Rendering
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
                 var tex = EntityManager.GetComponentData<TextureBGFX>(br.texture);
                 float4x4 idm = float4x4.identity;
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
-                    if (sys->m_blitPrimarySRGB) {
+                    if (sys->m_blitPrimarySRGB)
+                    {
                         // need to convert linear to srgb if we are not rendering to a texture in linear workflow
                         bool toPrimaryWithSRGB = EntityManager.HasComponent<RenderNodePrimarySurface>(pass.inNode) && sys->m_allowSRGBTextures;
                         if (!toPrimaryWithSRGB)
@@ -45,7 +47,9 @@ namespace Unity.Tiny.Rendering
                         else
                             SubmitHelper.SubmitBlitDirectExtended(sys, pass.viewId,  ref idm, tex.handle,
                                 false, true, 0.0f, new float4(1.0f), new float4(0.0f), false);
-                    } else {
+                    }
+                    else
+                    {
                         SubmitHelper.SubmitBlitDirectFast(sys, pass.viewId, ref idm, br.color, tex.handle);
                     }
                 }
@@ -62,28 +66,30 @@ namespace Unity.Tiny.Rendering
             var sys = World.GetExistingSystem<RendererBGFXSystem>().InstancePointer();
             if (!sys->m_initialized)
                 return;
-            // get all MeshRenderer, cull them, and add them to graph nodes that need them 
+            // get all MeshRenderer, cull them, and add them to graph nodes that need them
             // any mesh renderer MUST have a shared component data that has a list of passes to render to
             // this list is usually very shared - all opaque meshes will render to all ZOnly and Opaque passes
             // this shared data is not dynamically updated - other systems are responsible to update them if needed
             // simple
-            Entities.WithAll<SimpleMeshRenderer>().WithoutBurst().ForEach((Entity e, ref MeshRenderer mr, ref LocalToWorld tx, ref WorldBounds wb, ref WorldBoundingSphere wbs) =>
+            Entities.WithAll<SimpleMeshRenderer>().WithoutBurst().ForEach((Entity e, ref MeshRenderer mr, ref LocalToWorld tx, in WorldBounds wb, in WorldBoundingSphere wbs) =>
             {
                 if (!EntityManager.HasComponent<RenderToPasses>(e))
                     return;
 
                 RenderToPasses toPassesRef = EntityManager.GetSharedComponentData<RenderToPasses>(e);
                 DynamicBuffer<RenderToPassesEntry> toPasses = EntityManager.GetBufferRO<RenderToPassesEntry>(toPassesRef.e);
-                for (int i = 0; i < toPasses.Length; i++) {
+                for (int i = 0; i < toPasses.Length; i++)
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
-                    if (Culling.Cull(ref wbs, ref pass.frustum) == Culling.CullingResult.Outside)
+                    if (Culling.Cull(in wbs, in pass.frustum) == Culling.CullingResult.Outside)
                         continue;
                     // double cull as example only
-                    if (Culling.IsCulled(ref wb, ref pass.frustum))
+                    if (Culling.IsCulled(in wb, in pass.frustum))
                         continue;
                     var mesh = EntityManager.GetComponentData<MeshBGFX>(mr.mesh);
-                    switch (pass.passType) {
+                    switch (pass.passType)
+                    {
                         case RenderPassType.ZOnly:
                             SubmitHelper.SubmitZOnlyDirect(sys, pass.viewId, ref mesh, ref tx.Value, mr.startIndex, mr.indexCount, pass.GetFlipCulling());
                             break;
@@ -115,8 +121,8 @@ namespace Unity.Tiny.Rendering
             [ReadOnly] public ArchetypeChunkComponentType<WorldBoundingSphere> WorldBoundingSphereType;
             [ReadOnly] public ArchetypeChunkComponentType<ChunkWorldBoundingSphere> ChunkWorldBoundingSphereType;
             [ReadOnly] public ArchetypeChunkComponentType<ChunkWorldBounds> ChunkWorldBoundsType;
-            [DeallocateOnJobCompletion] [ReadOnly] public NativeArray<Entity> SharedRenderToPass;
-            [DeallocateOnJobCompletion] [ReadOnly] public NativeArray<Entity> SharedLightingRef;
+            [DeallocateOnJobCompletion][ReadOnly] public NativeArray<Entity> SharedRenderToPass;
+            [DeallocateOnJobCompletion][ReadOnly] public NativeArray<Entity> SharedLightingRef;
             [ReadOnly] public BufferFromEntity<RenderToPassesEntry> BufferRenderToPassesEntry;
             [ReadOnly] public ComponentDataFromEntity<MeshBGFX> ComponentMeshBGFX;
             [ReadOnly] public ComponentDataFromEntity<RenderPass> ComponentRenderPass;
@@ -137,7 +143,7 @@ namespace Unity.Tiny.Rendering
                 var chunkWorldBoundingSphere = chunk.GetChunkComponentData(ChunkWorldBoundingSphereType).Value;
                 var bounds = chunk.GetChunkComponentData(ChunkWorldBoundsType).Value;
 
-                Assert.IsTrue (chunk.HasChunkComponent(ChunkWorldBoundingSphereType));
+                Assert.IsTrue(chunk.HasChunkComponent(ChunkWorldBoundingSphereType));
 
                 Entity lighte = SharedLightingRef[chunkIndex];
                 var lighting = ComponentLightingBGFX[lighte];
@@ -145,29 +151,34 @@ namespace Unity.Tiny.Rendering
 
                 Assert.IsTrue(ThreadIndex >= 0 && ThreadIndex < MaxPerThreadData);
                 bgfx.Encoder* encoder = PerThreadData[ThreadIndex].encoder;
-                if (encoder == null) {
+                if (encoder == null)
+                {
                     encoder = bgfx.encoder_begin(true);
                     Assert.IsTrue(encoder != null);
                     PerThreadData[ThreadIndex].encoder = encoder;
                 }
                 DynamicBuffer<RenderToPassesEntry> toPasses = BufferRenderToPassesEntry[rtpe];
 
-                // we can do this loop either way, passes first or renderers first. 
+                // we can do this loop either way, passes first or renderers first.
                 // TODO: profile what is better!
-                for (int i = 0; i < toPasses.Length; i++) { // for all passes this chunk renderer to 
+                for (int i = 0; i < toPasses.Length; i++)   // for all passes this chunk renderer to
+                {
                     Entity ePass = toPasses[i].e;
                     var pass = ComponentRenderPass[ePass];
-                    Assert.IsTrue(encoder != null);                    
-                    for (int j = 0; j < chunk.Count; j++) { // for every renderer in chunk
+                    Assert.IsTrue(encoder != null);
+                    for (int j = 0; j < chunk.Count; j++)   // for every renderer in chunk
+                    {
                         var wbs = worldBoundingSphere[j];
                         var tx = chunkLocalToWorld[j].Value;
-                        if (wbs.radius > 0.0f && Culling.Cull(ref wbs, ref pass.frustum) == Culling.CullingResult.Outside) // TODO: fine cull only if rough culling was !Inside
+                        if (wbs.radius > 0.0f && Culling.Cull(in wbs, in pass.frustum) == Culling.CullingResult.Outside) // TODO: fine cull only if rough culling was !Inside
                             continue;
                         var meshRenderer = chunkMeshRenderer[j];
-                        if (meshRenderer.indexCount > 0 && ComponentMeshBGFX.Exists(meshRenderer.mesh)) { 
+                        if (meshRenderer.indexCount > 0 && ComponentMeshBGFX.Exists(meshRenderer.mesh))
+                        {
                             var mesh = ComponentMeshBGFX[meshRenderer.mesh];
                             Assert.IsTrue(mesh.IsValid());
-                            switch (pass.passType) { // TODO: we can hoist this out of the loop 
+                            switch (pass.passType)   // TODO: we can hoist this out of the loop
+                            {
                                 case RenderPassType.ZOnly:
                                     SubmitHelper.EncodeZOnly(BGFXInstancePtr, encoder, pass.viewId, ref mesh, ref tx, meshRenderer.startIndex, meshRenderer.indexCount, pass.GetFlipCulling());
                                     break;
@@ -184,7 +195,9 @@ namespace Unity.Tiny.Rendering
                                     Assert.IsTrue(false);
                                     break;
                             }
-                        } else {
+                        }
+                        else
+                        {
                             //var mesh = ComponentDynamicMeshBGFX[meshRenderer.mesh];
                         }
                     }
@@ -225,13 +238,15 @@ namespace Unity.Tiny.Rendering
             ArchetypeChunkSharedComponentType<LightingRef> lightingRefType = GetArchetypeChunkSharedComponentType<LightingRef>();
 
             // it really sucks we can't get shared components in the job itself
-            for (int i = 0; i < chunks.Length; i++) {
+            for (int i = 0; i < chunks.Length; i++)
+            {
                 sharedRenderToPass[i] = chunks[i].GetSharedComponentData<RenderToPasses>(renderToPassesType, EntityManager).e;
                 sharedLightingRef[i] = chunks[i].GetSharedComponentData<LightingRef>(lightingRefType, EntityManager).e;
             }
             chunks.Dispose();
 
-            var encodejob = new SubmitStaticLitMeshJob {
+            var encodejob = new SubmitStaticLitMeshJob
+            {
                 LocalToWorldType = GetArchetypeChunkComponentType<LocalToWorld>(true),
                 MeshRendererType = GetArchetypeChunkComponentType<MeshRenderer>(true),
                 WorldBoundsType = GetArchetypeChunkComponentType<WorldBounds>(true),
@@ -249,12 +264,11 @@ namespace Unity.Tiny.Rendering
                 MaxPerThreadData = sys->m_maxPerThreadData,
                 BGFXInstancePtr = sys
             };
-            Assert.IsTrue(sys->m_maxPerThreadData>0 && encodejob.MaxPerThreadData>0);
+            Assert.IsTrue(sys->m_maxPerThreadData > 0 && encodejob.MaxPerThreadData > 0);
 
             Dependency = encodejob.ScheduleParallel(m_query, Dependency);
             // Temporary workaround until dependencies bugs are fixed.
             Dependency.Complete();
         }
     }
-
 }

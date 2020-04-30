@@ -1,4 +1,4 @@
-﻿using Unity.Mathematics;
+using Unity.Mathematics;
 using UnityEngine;
 using Unity.Entities;
 using Unity.Entities.Runtime.Build;
@@ -26,16 +26,9 @@ namespace Unity.TinyConversion
         }
     }
 
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class RenderSettingsConversion : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
-        {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         protected override void OnUpdate()
         {
             //Get render settings from the current active scene
@@ -53,11 +46,11 @@ namespace Unity.TinyConversion
             var fogLinear = RenderSettings.fogColor.linear;
             DstEntityManager.AddComponentData<Unity.Tiny.Rendering.Fog>(e, new Unity.Tiny.Rendering.Fog()
             {
-               mode = RenderSettings.fogMode.ToTiny(RenderSettings.fog),
-               color = new float4(fogLinear.r,fogLinear.g, fogLinear.b, fogLinear.a),
-               density = RenderSettings.fogDensity,
-               startDistance = RenderSettings.fogStartDistance,
-               endDistance = RenderSettings.fogEndDistance
+                mode = RenderSettings.fogMode.ToTiny(RenderSettings.fog),
+                color = new float4(fogLinear.r, fogLinear.g, fogLinear.b, fogLinear.a),
+                density = RenderSettings.fogDensity,
+                startDistance = RenderSettings.fogStartDistance,
+                endDistance = RenderSettings.fogEndDistance
             });
         }
     }

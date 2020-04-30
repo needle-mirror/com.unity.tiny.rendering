@@ -16,7 +16,8 @@ namespace Unity.Tiny.Rendering
 
         public float3 GetVertex(int idx)
         {
-            switch(idx) {
+            switch (idx)
+            {
                 case 0b_000: return c000;
                 case 0b_001: return c001;
                 case 0b_011: return c011;
@@ -31,7 +32,8 @@ namespace Unity.Tiny.Rendering
 
         public void SetVertex(int idx, float3 value)
         {
-            switch(idx) {
+            switch (idx)
+            {
                 case 0b_000: c000 = value; break;
                 case 0b_001: c001 = value; break;
                 case 0b_011: c011 = value; break;
@@ -42,18 +44,17 @@ namespace Unity.Tiny.Rendering
                 case 0b_110: c110 = value; break;
                 default:  throw new IndexOutOfRangeException();
             }
-            
         }
     }
 
     // optional component for integrations:
-    // world bounds will be updated either from ObjectBounds (if present) 
+    // world bounds will be updated either from ObjectBounds (if present)
     // or MeshBounds (if there is a MeshRenderer)
     // ObjectBounds will take preference before mesh bounds, if both exist
     // ObjectBounds are not required for MeshRenderers
     public struct ObjectBounds : IComponentData
     {
-        public AABB Bounds; 
+        public AABB Bounds;
     }
 
     public struct WorldBoundingSphere : IComponentData
@@ -75,9 +76,9 @@ namespace Unity.Tiny.Rendering
     public static class Culling
     {
         public static readonly int[] EdgeTable = { 0b_000_001, 0b_000_100, 0b001_101, 0b101_100, // top
-                                            0b_010_011, 0b_010_110, 0b011_111, 0b111_110, // bottom
-                                            0b_000_010, 0b_001_011, 0b_101_111, 0b_100_110 // sides 
-                                          };
+                                                   0b_010_011, 0b_010_110, 0b011_111, 0b111_110, // bottom
+                                                   0b_000_010, 0b_001_011, 0b_101_111, 0b_100_110 // sides
+        };
 
         public static float3 SelectCoordsMinMax(float3 cMin, float3 cMax, int mask)
         {
@@ -86,21 +87,21 @@ namespace Unity.Tiny.Rendering
 
         static bool IsCulled8(float3 p0, float3 p1, float3 p2, float3 p3, float3 p4, float3 p5, float3 p6, float3 p7, float4 plane)
         {
-            float4 acc0; 
+            float4 acc0;
             acc0  = plane.xxxx * new float4(p0.x, p1.x, p2.x, p3.x);
             acc0 += plane.yyyy * new float4(p0.y, p1.y, p2.y, p3.y);
             acc0 += plane.zzzz * new float4(p0.z, p1.z, p2.z, p3.z);
             bool4 c0 = acc0 >= -plane.wwww;
             if (math.any(c0))
                 return false;
-            float4 acc1; 
+            float4 acc1;
             acc1  = plane.xxxx * new float4(p4.x, p5.x, p6.x, p7.x);
             acc1 += plane.yyyy * new float4(p4.y, p5.y, p6.y, p7.y);
             acc1 += plane.zzzz * new float4(p4.z, p5.z, p6.z, p7.z);
             bool4 c1 = acc1 >= -plane.wwww;
             if (math.any(c1))
                 return false;
-            return true; 
+            return true;
         }
 
         static bool IsCulled(float3 p, float4 plane)
@@ -111,34 +112,35 @@ namespace Unity.Tiny.Rendering
         public enum CullingResult
         {
             Outside = 0,
-            Intersects = 1, 
+            Intersects = 1,
             Inside = 2
         }
 
         static CullingResult Cull8(float3 p0, float3 p1, float3 p2, float3 p3, float3 p4, float3 p5, float3 p6, float3 p7, float4 plane)
         {
-            float4 acc0; 
+            float4 acc0;
             acc0  = plane.xxxx * new float4(p0.x, p1.x, p2.x, p3.x);
             acc0 += plane.yyyy * new float4(p0.y, p1.y, p2.y, p3.y);
             acc0 += plane.zzzz * new float4(p0.z, p1.z, p2.z, p3.z);
-            bool4 c0 = acc0 >= -plane.wwww; 
-            float4 acc1; 
+            bool4 c0 = acc0 >= -plane.wwww;
+            float4 acc1;
             acc1  = plane.xxxx * new float4(p4.x, p5.x, p6.x, p7.x);
             acc1 += plane.yyyy * new float4(p4.y, p5.y, p6.y, p7.y);
             acc1 += plane.zzzz * new float4(p4.z, p5.z, p6.z, p7.z);
             bool4 c1 = acc1 >= -plane.wwww;
             bool4 cor = c0 | c1;
-            if (math.any(cor)) {
+            if (math.any(cor))
+            {
                 bool4 cand =  c0 & c1;
                 if (math.all(cand))
                     return CullingResult.Inside;
-                else 
+                else
                     return CullingResult.Intersects;
             }
             return CullingResult.Outside;
         }
 
-        static public CullingResult Cull(ref WorldBoundingSphere bounds, float4 plane)
+        static public CullingResult Cull(in WorldBoundingSphere bounds, float4 plane)
         {
             float dist = math.dot(bounds.position, plane.xyz) + plane.w;
             if (dist <= -bounds.radius) return CullingResult.Outside;
@@ -146,24 +148,26 @@ namespace Unity.Tiny.Rendering
             return CullingResult.Intersects;
         }
 
-        static public CullingResult Cull(ref WorldBoundingSphere bounds, ref Frustum f)
+        static public CullingResult Cull(in WorldBoundingSphere bounds, in Frustum f)
         {
             CullingResult rall = CullingResult.Inside;
-            for (int i = 0; i < f.PlanesCount; i++) {
+            for (int i = 0; i < f.PlanesCount; i++)
+            {
                 float4 plane = f.GetPlane(i);
-                CullingResult r = Cull(ref bounds, plane);
+                CullingResult r = Cull(in bounds, plane);
                 if (r == CullingResult.Outside)
                     return CullingResult.Outside;
                 if (r == CullingResult.Intersects)
                     rall = CullingResult.Intersects;
             }
-            return rall; 
+            return rall;
         }
 
-        static public CullingResult Cull(ref WorldBounds bounds, ref Frustum f)
+        static public CullingResult Cull(in WorldBounds bounds, in Frustum f)
         {
             int mall = 0;
-            for (int i = 0; i < f.PlanesCount; i++) {
+            for (int i = 0; i < f.PlanesCount; i++)
+            {
                 float4 plane = f.GetPlane(i);
                 int m = IsCulled(bounds.c000, plane) ? 1 : 0;
                 m |= IsCulled(bounds.c001, plane) ? 2 : 0;
@@ -173,20 +177,21 @@ namespace Unity.Tiny.Rendering
                 m |= IsCulled(bounds.c101, plane) ? 32 : 0;
                 m |= IsCulled(bounds.c110, plane) ? 64 : 0;
                 m |= IsCulled(bounds.c111, plane) ? 128 : 0;
-                if (m == 255) return CullingResult.Outside; // all points outside one plane 
-                mall |= m; 
+                if (m == 255) return CullingResult.Outside; // all points outside one plane
+                mall |= m;
             }
             if (mall == 0) return CullingResult.Inside; // all points inside all planes
             return CullingResult.Intersects;
         }
 
-        static public bool IsCulled(ref WorldBounds bounds, ref Frustum f)
+        static public bool IsCulled(in WorldBounds bounds, in Frustum f)
         {
-            // if all vertices are completely outside of one culling plane, the object is culled 
-            for (int i = 0; i < f.PlanesCount; i++) {
+            // if all vertices are completely outside of one culling plane, the object is culled
+            for (int i = 0; i < f.PlanesCount; i++)
+            {
                 float4 plane = f.GetPlane(i);
-                if (IsCulled8(bounds.c000, bounds.c001, bounds.c011, bounds.c010, 
-                              bounds.c100, bounds.c101, bounds.c111, bounds.c110, plane))
+                if (IsCulled8(bounds.c000, bounds.c001, bounds.c011, bounds.c010,
+                    bounds.c100, bounds.c101, bounds.c111, bounds.c110, plane))
                     return true;
             }
             return false;
@@ -208,7 +213,7 @@ namespace Unity.Tiny.Rendering
                 string s = StringFormatter.Format("{0}: {1} {2}   ", i, m, plane);
                 bgfx.dbg_text_printf(0, (ushort)i, 0xf0, s, null);
 
-                //if (IsCulled8(bounds.c000, bounds.c001, bounds.c011, bounds.c010, 
+                //if (IsCulled8(bounds.c000, bounds.c001, bounds.c011, bounds.c010,
                 //              bounds.c100, bounds.c101, bounds.c111, bounds.c110, plane))
                 //    return true;
             }
@@ -217,7 +222,7 @@ namespace Unity.Tiny.Rendering
             */
         }
 
-        static public void WorldBoundsToAxisAligned(ref WorldBounds wBounds, out AABB aab)
+        static public void WorldBoundsToAxisAligned(in WorldBounds wBounds, out AABB aab)
         {
             float3 bbMin = wBounds.c000;
             float3 bbMax = wBounds.c000;
@@ -232,7 +237,7 @@ namespace Unity.Tiny.Rendering
                 b.SetVertex(i, math.transform(tx, b.GetVertex(i)));
         }
 
-        static public void AxisAlignedToWorldBounds(ref float4x4 tx, ref AABB aaBounds, out WorldBounds wBounds)
+        static public void AxisAlignedToWorldBounds(in float4x4 tx, in AABB aaBounds, out WorldBounds wBounds)
         {
             float3 s = aaBounds.Size;
             float3 o = math.mul(tx, new float4(aaBounds.Min, 1)).xyz;
@@ -249,7 +254,7 @@ namespace Unity.Tiny.Rendering
             wBounds.c110 = o + dz + dy;
         }
 
-        static public int SphereInSphere(float4 sphere1, float4 sphere2) 
+        static public int SphereInSphere(float4 sphere1, float4 sphere2)
         {
             float d = math.length(sphere1.xyz - sphere2.xyz);
             if (d + sphere2.w <= sphere1.w) return 1; // 2 inside 1
@@ -257,8 +262,8 @@ namespace Unity.Tiny.Rendering
             return 0; // intersecting
         }
 
-        // modifies sphere1 with result 
-        static public void MergeSpheres ( ref float4 sphere1, float4 sphere2 )
+        // modifies sphere1 with result
+        static public void MergeSpheres(ref float4 sphere1, float4 sphere2)
         {
             int check = SphereInSphere(sphere1, sphere2);
             if (check == 0)
@@ -286,7 +291,7 @@ namespace Unity.Tiny.Rendering
             return new float4(n, math.dot(n, p0));
         }
 
-        static public bool PointInBounds ( ref WorldBounds bounds, float3 p )
+        static public bool PointInBounds(in WorldBounds bounds, float3 p)
         {
             float4 pfront = PlaneFromTri(bounds.c000, bounds.c001, bounds.c011);
             if (IsCulled(p, pfront))
@@ -301,7 +306,7 @@ namespace Unity.Tiny.Rendering
         }
 
         // modifies bounds1 with results
-        static public void MergeBounds ( ref WorldBounds bounds1, ref WorldBounds bounds2 )
+        static public void MergeBounds(ref WorldBounds bounds1, ref WorldBounds bounds2)
         {
             // TODO
             Assert.IsTrue(false);
@@ -334,16 +339,16 @@ namespace Unity.Tiny.Rendering
     {
         public AABB m_wholeWorldBounds;
 
-        private static void UpdateBoundsFromAABB(ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx, ref AABB bounds)
+        private static void UpdateBoundsFromAABB(ref WorldBoundingSphere wbs, ref WorldBounds wb, in LocalToWorld tx, in AABB bounds)
         {
             // world obb
-            Culling.AxisAlignedToWorldBounds(ref tx.Value, ref bounds, out wb);
+            Culling.AxisAlignedToWorldBounds(in tx.Value, in bounds, out wb);
             // object sphere (could be made a memeber of MeshBounds and always pre-computed
-            float3 obsphereposition = bounds.Min + bounds.Extents; 
+            float3 obsphereposition = bounds.Min + bounds.Extents;
             float obsradius = math.length(bounds.Extents);
-            // world sphere 
+            // world sphere
             wbs.position = math.transform(tx.Value, obsphereposition);
-            // only really needed if there is scale 
+            // only really needed if there is scale
             float3 scale = new float3(math.lengthsq(tx.Value.c0), math.lengthsq(tx.Value.c1), math.lengthsq(tx.Value.c2));
             float s = math.sqrt(math.cmax(scale));
             wbs.radius = s * obsradius;
@@ -359,19 +364,22 @@ namespace Unity.Tiny.Rendering
         {
             base.OnCreate();
 
-            m_qAddChunkBoundinSphere = GetEntityQuery(new EntityQueryDesc {
-                All = new [] {ComponentType.ReadOnly<WorldBoundingSphere>()},
-                None = new [] {ComponentType.ChunkComponent<ChunkWorldBoundingSphere>() }
+            m_qAddChunkBoundinSphere = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] {ComponentType.ReadOnly<WorldBoundingSphere>()},
+                None = new[] {ComponentType.ChunkComponent<ChunkWorldBoundingSphere>() }
             });
 
-            m_qAddChunkBounds = GetEntityQuery(new EntityQueryDesc {
-                All = new [] {ComponentType.ReadOnly<WorldBounds>()},
-                None = new [] {ComponentType.ChunkComponent<ChunkWorldBounds>() }
+            m_qAddChunkBounds = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] {ComponentType.ReadOnly<WorldBounds>()},
+                None = new[] {ComponentType.ChunkComponent<ChunkWorldBounds>() }
             });
 
-            m_qUpdateChunkBounds = GetEntityQuery(new EntityQueryDesc {
-                All = new [] {ComponentType.ReadOnly<WorldBounds>(), ComponentType.ReadOnly<WorldBoundingSphere>(),
-                              ComponentType.ChunkComponent<ChunkWorldBoundingSphere>(), ComponentType.ChunkComponent<ChunkWorldBounds>()},
+            m_qUpdateChunkBounds = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] {ComponentType.ReadOnly<WorldBounds>(), ComponentType.ReadOnly<WorldBoundingSphere>(),
+                             ComponentType.ChunkComponent<ChunkWorldBoundingSphere>(), ComponentType.ChunkComponent<ChunkWorldBounds>()},
             });
 
             m_qMissingWorldBoundingSphere = GetEntityQuery(new EntityQueryDesc
@@ -398,19 +406,19 @@ namespace Unity.Tiny.Rendering
             EntityManager.AddComponent<WorldBounds>(m_qMissingWorldBounds);
 
             // update world bounds, sphere and box (TODO: this should really change track!)
-            float3 bbMinWhole = new float3(float.MaxValue); 
+            float3 bbMinWhole = new float3(float.MaxValue);
             float3 bbMaxWhole = new float3(-float.MaxValue);
 
             // option one: bounds straight from mesh
             ComponentDataFromEntity<MeshBounds> cmd = GetComponentDataFromEntity<MeshBounds>(true);
-            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx) => {
+            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref WorldBoundingSphere wbs, ref WorldBounds wb, in LocalToWorld tx) => {
                 var mb = cmd[mr.mesh];
-                UpdateBoundsFromAABB(ref wbs, ref wb, ref tx, ref mb.Bounds);
+                UpdateBoundsFromAABB(ref wbs, ref wb, in tx, in mb.Bounds);
                 Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
             }).Run();
             // option two: bounds from ObjectBounds
-            Entities.ForEach((ref ObjectBounds ob, ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx) => {
-                UpdateBoundsFromAABB(ref wbs, ref wb, ref tx, ref ob.Bounds);
+            Entities.ForEach((ref ObjectBounds ob, ref WorldBoundingSphere wbs, ref WorldBounds wb, in LocalToWorld tx) => {
+                UpdateBoundsFromAABB(ref wbs, ref wb, in tx, in ob.Bounds);
                 Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
             }).Run();
 
@@ -421,9 +429,10 @@ namespace Unity.Tiny.Rendering
             // experimental: chunk bounds, if we keep this it could be done in one loop, updating bounds and chunk bounds at the same time
 
             // add chunk bounds
-            EntityManager.AddChunkComponentData(m_qAddChunkBoundinSphere, new ChunkWorldBoundingSphere {
+            EntityManager.AddChunkComponentData(m_qAddChunkBoundinSphere, new ChunkWorldBoundingSphere
+            {
                 Value = new WorldBoundingSphere {  position = new float3(0), radius = -100000.0f }
-            }); 
+            });
             EntityManager.AddChunkComponentData(m_qAddChunkBounds, new ChunkWorldBounds());
 
             // update all chunk bounds
@@ -432,7 +441,8 @@ namespace Unity.Tiny.Rendering
             var worldBoundsType = EntityManager.GetArchetypeChunkComponentType<WorldBounds>(true);
             var chunkBoundingSphereType = EntityManager.GetArchetypeChunkComponentType<ChunkWorldBoundingSphere>(false);
             var worldBoundingSphereType = EntityManager.GetArchetypeChunkComponentType<WorldBoundingSphere>(true);
-            for ( int i=0; i<chunks.Length; i++ ) {
+            for (int i = 0; i < chunks.Length; i++)
+            {
                 var chunk = chunks[i];
                 var worldBounds = chunk.GetNativeArray<WorldBounds>(worldBoundsType);
                 var worldBoundingSpheres = chunk.GetNativeArray<WorldBoundingSphere>(worldBoundingSphereType);
@@ -446,21 +456,28 @@ namespace Unity.Tiny.Rendering
                     bbMin = wbPtr[0].c000;
                     bbMax = bbMin;
                     sphere = new float4(wbsPtr[0].position, wbsPtr[0].radius);
-                    for (int j = 1; j < k; j++) {
+                    for (int j = 1; j < k; j++)
+                    {
                         Culling.GrowBounds(ref bbMin, ref bbMax, in wbPtr[j]);
                         Culling.MergeSpheres(ref sphere, new float4(wbsPtr[j].position, wbsPtr[j].radius));
                     }
                 }
-                chunks[i].SetChunkComponentData<ChunkWorldBounds>(chunkBoundsType, new ChunkWorldBounds {
-                    Value = new AABB { 
+                chunks[i].SetChunkComponentData<ChunkWorldBounds>(chunkBoundsType, new ChunkWorldBounds
+                {
+                    Value = new AABB
+                    {
                         Center = (bbMin + bbMax) * 0.5f,
                         Extents = (bbMax - bbMin) * 0.5f
-                    }});
-                chunks[i].SetChunkComponentData<ChunkWorldBoundingSphere>(chunkBoundingSphereType, new ChunkWorldBoundingSphere {
-                    Value = new WorldBoundingSphere {
+                    }
+                });
+                chunks[i].SetChunkComponentData<ChunkWorldBoundingSphere>(chunkBoundingSphereType, new ChunkWorldBoundingSphere
+                {
+                    Value = new WorldBoundingSphere
+                    {
                         position = sphere.xyz,
                         radius = sphere.w
-                    }});
+                    }
+                });
             }
             chunks.Dispose();
         }

@@ -10,16 +10,9 @@ using Unity.Tiny.Particles;
 namespace Unity.TinyConversion
 {
     [UpdateInGroup(typeof(GameObjectDeclareReferencedObjectsGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     class ParticleSystemDeclareAssets : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
-        {
-            // Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         protected override void OnUpdate() =>
             Entities.ForEach((UnityEngine.ParticleSystemRenderer uParticleSystemRenderer) =>
             {
@@ -36,27 +29,20 @@ namespace Unity.TinyConversion
     }
 
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
-    [UpdateAfter(typeof(MaterialConversion))]
-    [UpdateAfter(typeof(MeshConversion))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class ParticleSystemConversion : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
-        {
-            // Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         protected override void OnUpdate()
         {
             Entities.ForEach((UnityEngine.ParticleSystem uParticleSystem) =>
             {
                 var eParticleSystem = GetPrimaryEntity(uParticleSystem);
                 AddTransforms(ref uParticleSystem, eParticleSystem);
+                Entity eParticle = DstEntityManager.CreateEntity();
+                DstEntityManager.AddComponentData<LocalToWorld>(eParticle, new LocalToWorld { Value = float4x4.identity });
+                DstEntityManager.AddComponentData<WorldBounds>(eParticle, new WorldBounds());
 
-                Entity eParticle = CreateParticleTemplate(ref uParticleSystem);
-
+                // Emission settings
                 if (uParticleSystem.emission.enabled)
                 {
                     DstEntityManager.AddComponentData<ParticleEmitter>(eParticleSystem, new ParticleEmitter
@@ -65,7 +51,7 @@ namespace Unity.TinyConversion
                         maxParticles = (uint)uParticleSystem.main.maxParticles,
                         emitRate = ConvertMinMaxCurve(uParticleSystem.emission.rateOverTime),
                         lifetime = ConvertMinMaxCurve(uParticleSystem.main.startLifetime),
-                        attachToEmitter = uParticleSystem.main.simulationSpace == ParticleSystemSimulationSpace.Local
+                        attachToEmitter = uParticleSystem.main.simulationSpace == ParticleSystemSimulationSpace.Local,
                     });
 
                     if (uParticleSystem.emission.burstCount > 0)
@@ -81,8 +67,8 @@ namespace Unity.TinyConversion
                                 count = ConvertMinMaxCurve(burst.count),
                                 interval = burst.repeatInterval,
                                 cycles = burst.cycleCount
-                                // TODO probability
-                                // TODO time
+                                    // TODO probability
+                                    // TODO time
                             });
                         }
                     }
@@ -90,9 +76,14 @@ namespace Unity.TinyConversion
 
                 AddEmitterSource(ref uParticleSystem, eParticleSystem);
 
+                // Renderer
                 ParticleSystemRenderer uParticleSystemRenderer = uParticleSystem.gameObject.GetComponent<ParticleSystemRenderer>();
+                DstEntityManager.AddComponentData(eParticleSystem, new ParticleMaterial { material = GetPrimaryEntity(uParticleSystemRenderer.sharedMaterial) });
+
                 if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Billboard)
                     DstEntityManager.AddComponentData<Billboarded>(eParticleSystem, new Billboarded());
+                else if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh)
+                    DstEntityManager.AddComponentData(eParticleSystem, new ParticleMesh { mesh = GetPrimaryEntity(uParticleSystemRenderer.mesh) });
             });
         }
 
@@ -145,35 +136,6 @@ namespace Unity.TinyConversion
             }
         }
 
-        private Entity CreateParticleTemplate(ref UnityEngine.ParticleSystem uParticleSystem)
-        {
-            Entity eParticle = DstEntityManager.CreateEntity();
-
-            // Mesh Renderer
-            ParticleSystemRenderer uParticleSystemRenderer = uParticleSystem.gameObject.GetComponent<ParticleSystemRenderer>();
-            var eMaterial = GetPrimaryEntity(uParticleSystemRenderer.sharedMaterial);
-            Unity.Tiny.Rendering.MeshRenderer meshRenderer = new Unity.Tiny.Rendering.MeshRenderer { material = eMaterial };
-            if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh)
-            {
-                meshRenderer.mesh = GetPrimaryEntity(uParticleSystemRenderer.mesh);
-                var lmrd = DstEntityManager.GetComponentData<LitMeshRenderData>(meshRenderer.mesh);
-                meshRenderer.startIndex = 0;
-                meshRenderer.indexCount = lmrd.Mesh.Value.Indices.Length;
-            }
-            DstEntityManager.AddComponentData(eParticle, meshRenderer);
-            DstEntityManager.AddComponentData(eParticle, new Unity.Tiny.Rendering.LitMeshRenderer());
-
-            // Transform
-            DstEntityManager.AddComponentData<LocalToWorld>(eParticle, new LocalToWorld
-            {
-                Value = float4x4.identity
-            });
-
-            DstEntityManager.AddComponentData<WorldBounds>(eParticle, new WorldBounds());
-
-            return eParticle;
-        }
-
         private void AddEmitterSource(ref UnityEngine.ParticleSystem uParticleSystem, Entity eParticleSystem)
         {
             if (!uParticleSystem.shape.enabled)
@@ -208,10 +170,11 @@ namespace Unity.TinyConversion
                     break;
             }
         }
+
         // TODO support curves
         private Range ConvertMinMaxCurve(UnityEngine.ParticleSystem.MinMaxCurve curve)
         {
-            switch(curve.mode)
+            switch (curve.mode)
             {
                 case ParticleSystemCurveMode.Constant:
                     return new Range { start = curve.constant, end = curve.constant };
@@ -229,16 +192,10 @@ namespace Unity.TinyConversion
 
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
     [UpdateBefore(typeof(MeshConversion))]
+    [UpdateAfter(typeof(MaterialConversion))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class ParticleSystemRendererConversion : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
-        {
-            // Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
-        }
-
         protected override void OnUpdate()
         {
             Entities.ForEach((UnityEngine.ParticleSystemRenderer uParticleSystemRenderer) =>
@@ -247,8 +204,18 @@ namespace Unity.TinyConversion
                 UnityEngine.Mesh uMesh = uParticleSystemRenderer.mesh;
                 if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh && uMesh != null)
                 {
-                    var meshEntity = GetPrimaryEntity(uMesh);
-                    DstEntityManager.AddComponent<LitMeshRenderData>(meshEntity);
+                    var eMesh = GetPrimaryEntity(uMesh);
+                    var eMaterial = GetPrimaryEntity(uParticleSystemRenderer.sharedMaterial);
+                    if (DstEntityManager.HasComponent<LitMaterial>(eMaterial))
+                    {
+                        DstEntityManager.AddComponent<LitMeshRenderData>(eMesh);
+                        DstEntityManager.RemoveComponent<SimpleMeshRenderData>(eMesh);
+                    }
+                    else if (DstEntityManager.HasComponent<SimpleMaterial>(eMaterial))
+                    {
+                        DstEntityManager.AddComponent<SimpleMeshRenderData>(eMesh);
+                        DstEntityManager.RemoveComponent<LitMeshRenderData>(eMesh);
+                    }
                 }
             });
         }

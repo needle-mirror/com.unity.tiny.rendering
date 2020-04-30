@@ -9,6 +9,7 @@ using Unity.Jobs;
 using Unity.Entities.Runtime.Build;
 using System.Collections.Generic;
 using Unity.Assertions;
+using Debug = Unity.Tiny.Debug;
 
 namespace Unity.TinyConversion
 {
@@ -119,21 +120,21 @@ namespace Unity.TinyConversion
     }
 
     [UpdateInGroup(typeof(GameObjectConversionGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.DotsRuntimeGameObjectConversion)]
     public class MeshConversion : GameObjectConversionSystem
     {
-        public override bool ShouldRunConversionSystem()
+        void CheckForMeshLimitations(Mesh uMesh)
         {
-            //Workaround for running the tiny conversion systems only if the BuildSettings have the DotsRuntimeBuildProfile component, so these systems won't run in play mode
-            if (!TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out _))
-                return false;
-            return base.ShouldRunConversionSystem();
+            int vertexCount = uMesh.vertexCount;
+            if (vertexCount > UInt16.MaxValue)
+                throw new ArgumentException($"The maximum number of vertices supported per mesh is {UInt16.MaxValue} and the mesh {uMesh.name} has {vertexCount} vertices. Please use a lighter mesh instead.");
         }
 
         protected override void OnUpdate()
         {
             var simpleMeshContext = new BlobAssetComputationContext<UMeshSettings, SimpleMeshData>(BlobAssetStore, 128, Allocator.Temp);
             var litMeshContext = new BlobAssetComputationContext<UMeshSettings, LitMeshData>(BlobAssetStore, 128, Allocator.Temp);
-            
+
             JobHandle combinedJH = new JobHandle();
             int simpleIndex = 0;
             int litIndex = 0;
@@ -141,6 +142,7 @@ namespace Unity.TinyConversion
             // Init blobasset arrays
             Entities.ForEach((UnityEngine.Mesh uMesh) =>
             {
+                CheckForMeshLimitations(uMesh);
                 var entity = GetPrimaryEntity(uMesh);
                 if (DstEntityManager.HasComponent<SimpleMeshRenderData>(entity))
                     simpleIndex++;
@@ -156,11 +158,11 @@ namespace Unity.TinyConversion
             // Check which blob assets to re-compute
             Entities.ForEach((UnityEngine.Mesh uMesh) =>
             {
-                var hash = new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint) uMesh.subMeshCount.GetHashCode(), 0);
+                var hash = new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint)uMesh.subMeshCount.GetHashCode(), 0);
 
                 var entity = GetPrimaryEntity(uMesh);
 
-                //Schedule blob asset recomputation jobs 
+                //Schedule blob asset recomputation jobs
                 if (DstEntityManager.HasComponent<SimpleMeshRenderData>(entity))
                 {
                     simpleMeshContext.AssociateBlobAssetWithUnityObject(hash, uMesh);
@@ -175,7 +177,7 @@ namespace Unity.TinyConversion
                         combinedJH = JobHandle.CombineDependencies(combinedJH, job.Schedule(combinedJH));
                     }
                 }
-                if(DstEntityManager.HasComponent<LitMeshRenderData>(entity))
+                if (DstEntityManager.HasComponent<LitMeshRenderData>(entity))
                 {
                     litMeshContext.AssociateBlobAssetWithUnityObject(hash, uMesh);
                     if (litMeshContext.NeedToComputeBlobAsset(hash))
@@ -216,7 +218,7 @@ namespace Unity.TinyConversion
                 bool addBounds = false;
                 if (DstEntityManager.HasComponent<SimpleMeshRenderData>(entity))
                 {
-                    simpleMeshContext.GetBlobAsset(new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint) uMesh.subMeshCount.GetHashCode(), 0), out var blob);
+                    simpleMeshContext.GetBlobAsset(new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint)uMesh.subMeshCount.GetHashCode(), 0), out var blob);
                     DstEntityManager.AddComponentData(entity, new SimpleMeshRenderData()
                     {
                         Mesh = blob
@@ -225,24 +227,26 @@ namespace Unity.TinyConversion
                 }
                 if (DstEntityManager.HasComponent<LitMeshRenderData>(entity))
                 {
-                    litMeshContext.GetBlobAsset(new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint) uMesh.subMeshCount.GetHashCode(), 0), out var blob);
+                    litMeshContext.GetBlobAsset(new Hash128((uint)uMesh.GetHashCode(), (uint)uMesh.vertexCount.GetHashCode(), (uint)uMesh.subMeshCount.GetHashCode(), 0), out var blob);
                     DstEntityManager.AddComponentData(entity, new LitMeshRenderData()
                     {
                         Mesh = blob
                     });
                     addBounds = true;
                 }
-                if (addBounds) 
+                if (addBounds)
                 {
-                    DstEntityManager.AddComponentData(entity, new MeshBounds {
-                        Bounds = new AABB {
+                    DstEntityManager.AddComponentData(entity, new MeshBounds
+                    {
+                        Bounds = new AABB
+                        {
                             Center = uMesh.bounds.center,
                             Extents = uMesh.bounds.extents
                         }
                     });
                 }
             });
-            
+
             simpleMeshContext.Dispose();
             litMeshContext.Dispose();
             simpleblobs.Dispose();
