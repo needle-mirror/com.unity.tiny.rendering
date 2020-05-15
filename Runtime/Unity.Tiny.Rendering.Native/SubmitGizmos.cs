@@ -342,7 +342,7 @@ namespace Unity.Tiny.Rendering
                 {
                     Entity ePass = toPasses[i].e;
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
-                    SubmitHelper.EncodeSimple(sys, encoder, pass.viewId, ref sys->m_quadMesh, ref m, ref sm, 0, 6, pass.GetFlipCulling());
+                    SubmitHelper.EncodeSimple(sys, encoder, pass.viewId, ref sys->m_quadMesh, ref m, ref sm, 0, 6, pass.GetFlipCulling(), 0);
                 }
             }).Run();
             bgfx.encoder_end(encoder);

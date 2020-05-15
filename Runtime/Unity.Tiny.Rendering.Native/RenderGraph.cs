@@ -19,7 +19,6 @@ namespace Unity.Tiny.Rendering
         public Entity e; // next to RenderNode, list of passes in this node
     }
 
-    [System.Serializable]
     public struct RenderToPasses : ISharedComponentData
     {
         public Entity e; // shared on every renderer, points to an entity that has RenderToPassesEntry[] buffer
@@ -119,7 +118,6 @@ namespace Unity.Tiny.Rendering
     {
         Unsorted = bgfx.ViewMode.Default,
         SortZLess = bgfx.ViewMode.DepthDescending,
-        SortZGreater = bgfx.ViewMode.DepthAscending,
         Sorted = bgfx.ViewMode.Sequential
     }
 
@@ -155,6 +153,7 @@ namespace Unity.Tiny.Rendering
         public RenderPassSort sorting;
         public float4x4 projectionTransform;
         public float4x4 viewTransform;
+        public float4x4 viewProjectionTransform;
         public RenderPassType passType;
         public ushort viewId;
         public RenderPassRect scissor;
@@ -169,6 +168,15 @@ namespace Unity.Tiny.Rendering
         // next to it, optional, Frustum for late stage culling
         public byte GetFlipCulling() { return (byte)(passFlags & RenderPassFlags.CullingMask); }
         public byte GetFlipCullingInverse() { return (byte)((passFlags & RenderPassFlags.CullingMask) ^ RenderPassFlags.CullingMask); }
+
+        public uint ComputeSortDepth(in float4 txc3)
+        {
+            var screenPos = math.mul(viewProjectionTransform, txc3);
+            float normZ = screenPos.z / screenPos.w; // [-1..1] range, in view frustrum
+            normZ = normZ + 1024.0f; // give us generous extra room at near clip plane
+            if (normZ < 0.0f) normZ = 0.0f; // we have to clamp here, as this is only the center of the object, and objects still can render even if their center is near clipped
+            return math.asuint(normZ); // floats with the same sign sort as uints
+        }
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
@@ -337,21 +345,23 @@ namespace Unity.Tiny.Rendering
                 if (rtt) pass.passFlags = RenderPassFlags.RenderToTexture;
                 else pass.passFlags = 0;
                 // those could be more shared ... (that is, do all passes really need a copy of view & projection?)
-                unsafe { fixed(float4x4 * viewp = &pass.viewTransform, projp = &pass.projectionTransform) {
-                             if (bgfxinst->m_homogeneousDepth && bgfxinst->m_originBottomLeft) // gl style
-                             {
-                                 bgfx.set_view_transform(pass.viewId, viewp, projp);
-                                 pass.passFlags &= ~RenderPassFlags.FlipCulling;
-                             }
-                             else // dx style
-                             {
-                                 bool yflip = !bgfxinst->m_originBottomLeft && rtt;
-                                 float4x4 adjustedProjection = RendererBGFXStatic.AdjustProjection(ref pass.projectionTransform, !bgfxinst->m_homogeneousDepth, yflip);
-                                 bgfx.set_view_transform(pass.viewId, viewp, &adjustedProjection);
-                                 if (yflip) pass.passFlags |= RenderPassFlags.FlipCulling;
-                                 else  pass.passFlags &= ~RenderPassFlags.FlipCulling;
-                             }
-                         }}
+                unsafe { fixed(float4x4* viewp = &pass.viewTransform, projp = &pass.projectionTransform) {
+                    if (bgfxinst->m_homogeneousDepth && bgfxinst->m_originBottomLeft) // gl style
+                    {
+                        bgfx.set_view_transform(pass.viewId, viewp, projp);
+                        pass.passFlags &= ~RenderPassFlags.FlipCulling;
+                    }
+                    else // dx style
+                    {
+                        bool yflip = !bgfxinst->m_originBottomLeft && rtt;
+                        float4x4 adjustedProjection = RendererBGFXStatic.AdjustProjection(ref pass.projectionTransform, !bgfxinst->m_homogeneousDepth, yflip);
+                        bgfx.set_view_transform(pass.viewId, viewp, &adjustedProjection);
+                        if (yflip) pass.passFlags |= RenderPassFlags.FlipCulling;
+                        else  pass.passFlags &= ~RenderPassFlags.FlipCulling;
+                    }
+                    // make a viewProjection
+                    pass.viewProjectionTransform = math.mul(pass.projectionTransform, pass.viewTransform);
+                }}
                 bgfx.set_view_mode(pass.viewId, (bgfx.ViewMode)pass.sorting);
                 bgfx.set_view_rect(pass.viewId, pass.viewport.x, pass.viewport.y, pass.viewport.w, pass.viewport.h);
                 bgfx.set_view_scissor(pass.viewId, pass.scissor.x, pass.scissor.y, pass.scissor.w, pass.scissor.h);

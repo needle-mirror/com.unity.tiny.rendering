@@ -1,22 +1,22 @@
 {
   "name": "com.unity.tiny.rendering",
   "displayName": "Project Tiny Rendering",
-  "version": "0.25.0-preview",
+  "version": "0.26.0-preview.14",
   "unity": "2019.3",
-  "unityRelease": "0f1",
+  "unityRelease": "12f1",
   "description": "This Package provides lightweight rendering to Project Tiny",
   "keywords": [
     "tiny",
     "DOTS"
   ],
   "dependencies": {
-    "com.unity.dots.runtime": "0.25.0-preview",
-    "com.unity.tiny": "0.25.0-preview"
+    "com.unity.dots.runtime": "0.26.0-preview.14",
+    "com.unity.tiny": "0.26.0-preview.14"
   },
   "repository": {
-    "footprint": "ad7b3310a31e8ebe558782f80bf548c4afd72b33",
+    "footprint": "450e484a5bfe4769ba3733207fbb4dfb1f84218c",
     "type": "git",
     "url": "https://github.com/Unity-Technologies/dots.git",
-    "revision": "d3cc60309f9f88e89cc58f84fcdd826ccd34c1e1"
+    "revision": "fa21b69a5bde87e0be1ae2f6b4f914bd30f2b77c"
   }
 }

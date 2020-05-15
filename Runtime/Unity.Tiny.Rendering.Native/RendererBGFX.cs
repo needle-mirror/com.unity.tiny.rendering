@@ -32,6 +32,8 @@ using Unity.Development;
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.CPU.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Android")]
 [assembly: InternalsVisibleTo("Unity.2D.Entities.Runtime")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.Runtime.Native")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.Authoring.Native")]
 [assembly: InternalsVisibleTo("Unity.2D.Entities.TestFixture")]
 [assembly: InternalsVisibleTo("Unity.2D.Entities.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Text.Native")]

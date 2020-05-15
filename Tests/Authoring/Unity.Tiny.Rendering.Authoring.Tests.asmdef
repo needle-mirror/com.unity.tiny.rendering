@@ -10,7 +10,8 @@
         "Unity.Build",
         "Unity.Tiny.Rendering.Authoring",
         "Unity.Transforms",
-        "Unity.PerformanceTesting"
+        "Unity.PerformanceTesting",
+        "Unity.Entities.Runtime.Build"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"

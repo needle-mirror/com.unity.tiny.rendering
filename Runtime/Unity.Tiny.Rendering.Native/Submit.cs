@@ -88,6 +88,7 @@ namespace Unity.Tiny.Rendering
                     if (Culling.IsCulled(in wb, in pass.frustum))
                         continue;
                     var mesh = EntityManager.GetComponentData<MeshBGFX>(mr.mesh);
+                    uint depth = 0;
                     switch (pass.passType)
                     {
                         case RenderPassType.ZOnly:
@@ -97,9 +98,11 @@ namespace Unity.Tiny.Rendering
                             SubmitHelper.SubmitZOnlyDirect(sys, pass.viewId, ref mesh, ref tx.Value, mr.startIndex, mr.indexCount, pass.GetFlipCullingInverse());
                             break;
                         case RenderPassType.Transparent:
+                            depth = pass.ComputeSortDepth(tx.Value.c3);
+                            goto case RenderPassType.Opaque;
                         case RenderPassType.Opaque:
                             var material = EntityManager.GetComponentData<SimpleMaterialBGFX>(mr.material);
-                            SubmitHelper.SubmitSimpleDirect(sys, pass.viewId, ref mesh, ref tx.Value, ref material, mr.startIndex, mr.indexCount, pass.GetFlipCulling());
+                            SubmitHelper.SubmitSimpleDirect(sys, pass.viewId, ref mesh, ref tx.Value, ref material, mr.startIndex, mr.indexCount, pass.GetFlipCulling(), depth);
                             break;
                         default:
                             Assert.IsTrue(false);
@@ -177,6 +180,7 @@ namespace Unity.Tiny.Rendering
                         {
                             var mesh = ComponentMeshBGFX[meshRenderer.mesh];
                             Assert.IsTrue(mesh.IsValid());
+                            uint depth = 0;
                             switch (pass.passType)   // TODO: we can hoist this out of the loop
                             {
                                 case RenderPassType.ZOnly:
@@ -187,9 +191,11 @@ namespace Unity.Tiny.Rendering
                                     SubmitHelper.EncodeShadowMap(BGFXInstancePtr, encoder, pass.viewId, ref mesh, ref tx, meshRenderer.startIndex, meshRenderer.indexCount, pass.GetFlipCullingInverse(), bias);
                                     break;
                                 case RenderPassType.Transparent:
+                                    depth = pass.ComputeSortDepth(tx.c3);
+                                    goto case RenderPassType.Opaque;
                                 case RenderPassType.Opaque:
                                     var material = ComponentLitMaterialBGFX[meshRenderer.material];
-                                    SubmitHelper.EncodeLit(BGFXInstancePtr, encoder, pass.viewId, ref mesh, ref tx, ref material, ref lighting, ref pass.viewTransform, meshRenderer.startIndex, meshRenderer.indexCount, pass.GetFlipCulling(), ref PerThreadData[ThreadIndex].viewSpaceLightCache);
+                                    SubmitHelper.EncodeLit(BGFXInstancePtr, encoder, pass.viewId, ref mesh, ref tx, ref material, ref lighting, ref pass.viewTransform, meshRenderer.startIndex, meshRenderer.indexCount, pass.GetFlipCulling(), ref PerThreadData[ThreadIndex].viewSpaceLightCache, depth);
                                     break;
                                 default:
                                     Assert.IsTrue(false);

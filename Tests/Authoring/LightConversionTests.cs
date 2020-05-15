@@ -4,6 +4,7 @@ using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEditor;
 using Unity.Build;
+using Unity.Entities.Runtime.Build;
 using UnityEngine;
 using Unity.Tiny.Rendering;
 
@@ -26,8 +27,7 @@ namespace Unity.Tiny.Authoring.Tests
             entityManager = world.EntityManager;
 
             settings = GameObjectConversionSettings.FromWorld(world, new BlobAssetStore());
-            string buildConfigurationGuid = AssetDatabase.AssetPathToGUID(TestHelper.BuildConfigurationAssetPath);
-            settings.BuildConfiguration = BuildConfiguration.LoadAsset(new GUID(buildConfigurationGuid));
+            settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
 
             camera = new GameObject();
             camera.AddComponent<UnityEngine.Camera>();

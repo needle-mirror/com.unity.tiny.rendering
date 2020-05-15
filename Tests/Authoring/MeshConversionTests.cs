@@ -8,6 +8,7 @@ using Unity.Mathematics;
 using UnityEditor;
 using Unity.Build;
 using System.Collections.Generic;
+using Unity.Entities.Runtime.Build;
 using Unity.PerformanceTesting;
 using MeshRenderer = Unity.Tiny.Rendering.MeshRenderer;
 
@@ -31,8 +32,7 @@ namespace Unity.Tiny.Authoring.Tests
             blobAssetStore = new BlobAssetStore();
 
             settings = GameObjectConversionSettings.FromWorld(world, blobAssetStore);
-            string buildConfigurationGuid = AssetDatabase.AssetPathToGUID(TestHelper.BuildConfigurationAssetPath);
-            settings.BuildConfiguration = BuildConfiguration.LoadAsset(new GUID(buildConfigurationGuid));
+            settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
         }
 
         [TearDown]

@@ -175,12 +175,12 @@ namespace Unity.Tiny.Rendering
         // ---------------- simple, lit, with mesh ----------------------------------------------------------------------------------------------------------------------
         public unsafe static void SubmitLitDirect(RendererBGFXInstance *sys, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx,
             ref LitMaterialBGFX mat, ref LightingBGFX lighting,
-            ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling)
+            ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling, uint depth)
         {
             bgfx.Encoder* encoder = bgfx.encoder_begin(false);
             LightingViewSpaceBGFX vsLight = default;
             vsLight.cacheTag = -1;
-            EncodeLit(sys, encoder, viewId, ref mesh, ref tx, ref mat, ref lighting, ref viewTx, startIndex, indexCount, flipCulling, ref vsLight);
+            EncodeLit(sys, encoder, viewId, ref mesh, ref tx, ref mat, ref lighting, ref viewTx, startIndex, indexCount, flipCulling, ref vsLight, depth);
             bgfx.encoder_end(encoder);
         }
 
@@ -207,8 +207,8 @@ namespace Unity.Tiny.Rendering
         }
 
         public unsafe static void EncodeLit(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx,
-            ref LitMaterialBGFX mat, ref LightingBGFX lighting,
-            ref float4x4 viewTx, int startIndex, int indexCount, byte flipCulling, ref LightingViewSpaceBGFX viewSpaceLightCache)
+            ref LitMaterialBGFX mat, ref LightingBGFX lighting, ref float4x4 viewTx, int startIndex, int indexCount,
+            byte flipCulling, ref LightingViewSpaceBGFX viewSpaceLightCache, uint depth)
         {
             ulong state = mat.state;
             if (flipCulling != 0)
@@ -286,18 +286,18 @@ namespace Unity.Tiny.Rendering
             bgfx.encoder_set_uniform(encoder, sys->m_litShader.m_uniformFogParams, p, 1);
 
             // submit
-            bgfx.encoder_submit(encoder, viewId, sys->m_litShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
+            bgfx.encoder_submit(encoder, viewId, sys->m_litShader.m_prog, depth, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- simple, unlit, with mesh ----------------------------------------------------------------------------------------------------------------------
-        public static unsafe void SubmitSimpleDirect(RendererBGFXInstance *sys, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, ref SimpleMaterialBGFX mat, int startIndex, int indexCount, byte flipCulling)
+        public static unsafe void SubmitSimpleDirect(RendererBGFXInstance *sys, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, ref SimpleMaterialBGFX mat, int startIndex, int indexCount, byte flipCulling, uint depth)
         {
             bgfx.Encoder* encoder = bgfx.encoder_begin(false);
-            EncodeSimple(sys, encoder, viewId, ref mesh, ref tx, ref mat, startIndex, indexCount, flipCulling);
+            EncodeSimple(sys, encoder, viewId, ref mesh, ref tx, ref mat, startIndex, indexCount, flipCulling, depth);
             bgfx.encoder_end(encoder);
         }
 
-        public static unsafe void EncodeSimple(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, ref SimpleMaterialBGFX mat, int startIndex, int indexCount, byte flipCulling)
+        public static unsafe void EncodeSimple(RendererBGFXInstance *sys, bgfx.Encoder* encoder, ushort viewId, ref MeshBGFX mesh, ref float4x4 tx, ref SimpleMaterialBGFX mat, int startIndex, int indexCount, byte flipCulling, uint depth)
         {
             bgfx.set_state(mat.state, 0);
             fixed(float4x4* p = &tx)
@@ -311,7 +311,7 @@ namespace Unity.Tiny.Rendering
             fixed(float4* p = &mat.billboarded)
             bgfx.encoder_set_uniform(encoder, sys->m_simpleShader.m_uniformBillboarded, p, 1);
             bgfx.encoder_set_texture(encoder, 0, sys->m_simpleShader.m_samplerTexColor0, mat.texAlbedoOpacity, UInt32.MaxValue);
-            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, 0, (byte)bgfx.DiscardFlags.All);
+            bgfx.encoder_submit(encoder, viewId, sys->m_simpleShader.m_prog, depth, (byte)bgfx.DiscardFlags.All);
         }
 
         // ---------------- blit ----------------------------------------------------------------------------------------------------------------------

@@ -8,6 +8,7 @@ using UnityEngine;
 using Unity.Tiny.Rendering;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Entities.Runtime.Build;
 
 namespace Unity.Tiny.Authoring.Tests
 {
@@ -27,8 +28,7 @@ namespace Unity.Tiny.Authoring.Tests
             entityManager = world.EntityManager;
 
             settings = GameObjectConversionSettings.FromWorld(world, new BlobAssetStore());
-            string buildConfigurationGuid = AssetDatabase.AssetPathToGUID(TestHelper.BuildConfigurationAssetPath);
-            settings.BuildConfiguration = BuildConfiguration.LoadAsset(new GUID(buildConfigurationGuid));
+            settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
         }
 
         [TearDown]

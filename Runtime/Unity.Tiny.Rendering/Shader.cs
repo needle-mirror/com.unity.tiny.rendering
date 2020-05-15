@@ -14,7 +14,6 @@ namespace Unity.Tiny.Rendering
         public static readonly Guid blitsrgb = new Guid("5876A499-59C7-46A7-A93B-6475C97745D5");
         public static readonly Guid externalblites3 = new Guid("2F00B069-1D12-4D14-8E63-7FD38846FD5C");
         public static readonly Guid shadowmap = new Guid("AFFC8771-429B-4546-B004-8069114518B7");
-        public static readonly Guid sprite = new Guid("8FB54888-8C94-4617-9518-348C6AE7E9E0");
     }
 
     public struct PrecompiledShader : IComponentData

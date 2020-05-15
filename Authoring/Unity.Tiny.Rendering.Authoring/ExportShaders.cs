@@ -29,7 +29,6 @@ namespace Unity.TinyConversion
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.zOnly, "zOnly", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.blitsrgb, "blitsrgb", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.shadowmap, "shadowmap", types);
-            CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.sprite, "sprite", types);
         }
     }
 }

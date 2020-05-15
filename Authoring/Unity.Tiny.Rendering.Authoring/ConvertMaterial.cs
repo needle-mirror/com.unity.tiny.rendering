@@ -88,8 +88,14 @@ namespace Unity.TinyConversion
                 twoSided = IsTwoSided(uMaterial),
                 transparent = uMaterial.GetInt("_Surface") == 1,
                 scale = new float2(textScale[0], textScale[1]),
-                offset = new float2(textTrans[0], 1 - textTrans[1]) // Invert the offset as well
+                offset = AdjustTextureOffset(textTrans, textScale)
             });
+        }
+
+        private static float2 AdjustTextureOffset(Vector2 textTrans, Vector2 textScale)
+        {
+            // need to invert the translation in y
+            return new float2(textTrans[0], (1.0f - textScale[1]) - textTrans[1]);
         }
 
         private void ConvertLitMaterial(Entity entity, Material uMaterial)
@@ -116,8 +122,7 @@ namespace Unity.TinyConversion
             }
 
             UnityEngine.Color baseColor = uMaterial.GetColor("_BaseColor").linear;
-            DstEntityManager.AddComponentData<LitMaterial>(entity, new LitMaterial()
-            {
+            DstEntityManager.AddComponentData<LitMaterial>(entity, new LitMaterial() {
                 texAlbedoOpacity = texAlbedo,
                 constAlbedo = new float3(baseColor.r, baseColor.g, baseColor.b),
                 constOpacity = baseColor.a,
@@ -132,7 +137,7 @@ namespace Unity.TinyConversion
                 transparent = uMaterial.GetInt("_Surface") == 1,
                 smoothnessAlbedoAlpha = ContainsShaderKeyword(uMaterial, "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A"),
                 scale = new float2(textScale[0], textScale[1]),
-                offset = new float2(textTrans[0], 1 - textTrans[1])  // Invert the offset as well
+                offset = AdjustTextureOffset(textTrans, textScale)
             });
         }
 
@@ -169,7 +174,7 @@ namespace Unity.TinyConversion
                 transparent = uMaterial.GetInt("_Surface") == 1,
                 smoothnessAlbedoAlpha = ContainsShaderKeyword(uMaterial, "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A"),
                 scale = new float2(textScale[0], textScale[1]),
-                offset = new float2(textTrans[0], 1 - textTrans[1]) // Invert the offset as well
+                offset = AdjustTextureOffset(textTrans, textScale)
             });
         }
 
