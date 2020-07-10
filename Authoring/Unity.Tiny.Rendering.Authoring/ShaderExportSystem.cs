@@ -8,6 +8,7 @@ using Unity.Entities.Runtime.Build;
 using Unity.Build.DotsRuntime;
 using Unity.Tiny.Rendering;
 using UnityEngine;
+using Hash128 = Unity.Entities.Hash128;
 
 namespace Unity.TinyConversion
 {
@@ -70,7 +71,7 @@ namespace Unity.TinyConversion
             throw new InvalidOperationException($"Target: {targetName} is not supported. No shaders will be exported");
         }
 
-        protected Entity CreateShaderDataEntity(string rootShaderPath, Guid shaderGuid, string shaderName, bgfx.RendererType[] backends)
+        protected Entity CreateShaderDataEntity(string rootShaderPath, Hash128 shaderGuid, string shaderName, bgfx.RendererType[] backends)
         {
             var e = EntityManager.CreateEntity(typeof(PrecompiledShader), typeof(VertexShaderBinData), typeof(FragmentShaderBinData));
             EntityManager.SetComponentData(e, new PrecompiledShader()

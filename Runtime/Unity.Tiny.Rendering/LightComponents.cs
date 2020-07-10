@@ -167,6 +167,17 @@ namespace Unity.Tiny.Rendering
         public float density;
         public float startDistance;
         public float endDistance;
+
+        public bool Equals(Fog other)
+        {
+            if (mode != other.mode) return false;
+            if (mode == Mode.None ) return true;
+            if (math.any(color != other.color)) return false;
+            if (density != other.density) return false;
+            if (startDistance != other.startDistance) return false;
+            if (endDistance != other.endDistance) return false;
+            return true;
+        }
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
@@ -272,21 +283,44 @@ namespace Unity.Tiny.Rendering
                         throw new InvalidOperationException("Too many non-shadow mapped lights loaded. Using more than eight non-shadow mapped lights at once is currently not supported.");
                     setup.PlainLights.Add(e);
                 }).Run();
-                Entities.WithAll<Light, AmbientLight>().ForEach((Entity e)=>{
+                float3 prevAmbient = new float3(); 
+                Entities.WithoutBurst().WithAll<AmbientLight>().ForEach((Entity e, in Light l)=>{
                     if ( lightMaskCDFE.HasComponent(e) ) 
                         if ((entMask & lightMaskCDFE[e].Value) == 0) 
                             return;
-                    if ( setup.AmbientLight!=Entity.Null )
-                        throw new InvalidOperationException("Too many ambient lights in scene. Using more than one ambient light is currently not supported.");
-                    setup.AmbientLight = e;
+                    float3 newAmbient = new float3(l.color * l.intensity);
+                    if ( setup.AmbientLight!=Entity.Null ) {
+                        // this should throw, but work around for multiple subscenes conversion for now
+                        if ( math.any(prevAmbient != newAmbient)) {
+                            RenderDebug.Log ( "Warning: Multiple, different, ambient lights in scene! Selecting the brightest one.");
+                            if ( math.lengthsq(prevAmbient) < math.lengthsq(newAmbient) ) {
+                                setup.AmbientLight = e;
+                                prevAmbient = newAmbient;
+                            }
+                        }
+                    } else { 
+                        setup.AmbientLight = e;
+                        prevAmbient = newAmbient;
+                    }
                 }).Run();
-                Entities.WithNone<DisableRendering>().WithAll<Fog>().ForEach((Entity e)=>{
+                Fog prevFog = new Fog(); 
+                Entities.WithoutBurst().WithNone<DisableRendering>().WithAll<Fog>().ForEach((Entity e, in Fog f)=>{
                     if ( lightMaskCDFE.HasComponent(e) ) 
                         if ((entMask & lightMaskCDFE[e].Value) == 0) 
                             return;
-                    if ( setup.Fog!=Entity.Null )
-                        throw new InvalidOperationException("Too many fog components loaded. Using more than one fog component is currently not supported.");
-                    setup.Fog = e;
+                    if ( setup.Fog!=Entity.Null ) {
+                        if ( !prevFog.Equals(f) ) {
+                            RenderDebug.Log ( "Warning: Multiple, different, fog settings in scene! Picked the first enabled one encountered.");
+                            // this should throw, but work around for multiple subscenes conversion for now
+                            // throw new InvalidOperationException("Too many fog components loaded. Using more than one fog component is currently not supported.");
+                            if ( prevFog.mode == Fog.Mode.None && f.mode != Fog.Mode.None ) {
+                                setup.Fog = e;
+                                prevFog = f;
+                            }
+                        }
+                    } else { 
+                        setup.Fog = e;
+                    }
                 }).Run();
                 var prevSetup = EntityManager.GetComponentData<LightingSetup>(m_lightingSetupPerMask[i].eSetup);
                 if ( !prevSetup.Equals(setup) ) {
@@ -336,7 +370,7 @@ namespace Unity.Tiny.Rendering
                 }
             }
             if (nchanged > 0)
-                Debug.LogFormatAlways("Changed {0} lighting setup(s).", nchanged);
+                RenderDebug.LogFormatAlways("Changed {0} lighting setup(s).", nchanged);
 
         }
     }

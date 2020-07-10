@@ -21,13 +21,25 @@ namespace Unity.TinyConversion
             Entities.ForEach((UnityEngine.SkinnedMeshRenderer uSkinnedMeshRenderer) =>
             {
                 foreach (Material mat in uSkinnedMeshRenderer.sharedMaterials)
+                {
                     DeclareReferencedAsset(mat);
+                    DeclareAssetDependency(uSkinnedMeshRenderer.gameObject, mat);
+
+                    int[] ids = mat.GetTexturePropertyNameIDs();
+                    for (int i = 0; i < ids.Length; i++)
+                    {
+                        var texture = mat.GetTexture(ids[i]);
+                        if( texture != null)
+                            DeclareAssetDependency(uSkinnedMeshRenderer.gameObject, texture);
+                    }
+                }
 
                 if (uSkinnedMeshRenderer.sharedMesh == null)
                     UnityEngine.Debug.LogWarning("Missing mesh in SkinnedMeshRenderer on gameobject: " +
                                                  uSkinnedMeshRenderer.gameObject.name);
 
                 DeclareReferencedAsset(uSkinnedMeshRenderer.sharedMesh);
+                DeclareAssetDependency(uSkinnedMeshRenderer.gameObject, uSkinnedMeshRenderer.sharedMesh);
             });
         }
     }

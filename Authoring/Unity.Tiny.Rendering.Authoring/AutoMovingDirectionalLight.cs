@@ -28,6 +28,8 @@ namespace Unity.Tiny.Authoring
                     autoBounds = uLight.autoBounds,
                     clipToCamera = entityCamera
                 });
+
+                DeclareDependency(uLight.gameObject, uLight.mainCamera);
             });
         }
     }

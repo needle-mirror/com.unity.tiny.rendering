@@ -328,7 +328,7 @@ namespace Unity.Tiny.Rendering
                             SubmitHelper.SubmitSimpleZOnlyTransientDirect(sys, &tib, &tvb, nvertices, nindices, pass.viewId, ref tx.Value, pass.GetFlipCullingInverse());
                             break;
                         case RenderPassType.Transparent:
-                            depth = pass.ComputeSortDepth(tx.Value.c3);
+                            depth = pass.ComputeSortDepth(new float4(wbs.position, 1.0f));
                             goto case RenderPassType.Opaque;
                         case RenderPassType.Opaque:
                             var material = EntityManager.GetComponentData<SimpleMaterialBGFX>(mr.material);
@@ -426,7 +426,7 @@ namespace Unity.Tiny.Rendering
                                 SubmitHelper.EncodeShadowMapTransient(BGFXInstancePtr, encoder, &tib, &tvb, nvertices, nindices, pass.viewId, ref tx, pass.GetFlipCullingInverse(), bias);
                                 break;
                             case RenderPassType.Transparent:
-                                depth = pass.ComputeSortDepth(tx.c3);
+                                depth = pass.ComputeSortDepth(new float4(wbs.position, 1.0f));
                                 goto case RenderPassType.Opaque;
                             case RenderPassType.Opaque:
                                 var material = ComponentLitMaterialBGFX[meshRenderer.material];

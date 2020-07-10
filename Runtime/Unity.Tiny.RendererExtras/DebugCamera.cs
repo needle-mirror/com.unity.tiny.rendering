@@ -102,7 +102,7 @@ namespace Unity.Tiny.Rendering
                 default:
                     m_cfgIndex = -1;
                     return new RenderGraphConfig { RenderBufferWidth = 1280, RenderBufferHeight = 720, Mode = RenderGraphMode.FixedRenderBuffer };
-                    
+
             }
         }
 
@@ -341,10 +341,9 @@ namespace Unity.Tiny.Rendering
 
             // copy camera info into byte array
             byte[] bytes = new byte[sizeof(CameraSynchronizationMessage)];
-            CameraSynchronizationMessage* pLocation = &camInfo;
             fixed (byte* pOut = bytes)
             {
-                UnsafeUtility.MemCpy(pOut, pLocation, sizeof(CameraSynchronizationMessage));
+                UnsafeUtility.CopyStructureToPtr(ref camInfo, pOut);
             }
 
             PlayerConnection.instance.Send(SharedCameraSyncInfo.syncCameraGuid, bytes);

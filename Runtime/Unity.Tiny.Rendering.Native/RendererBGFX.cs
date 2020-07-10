@@ -36,6 +36,7 @@ using Unity.Profiling.LowLevel.Unsafe;
 [assembly: InternalsVisibleTo("Unity.UIElements.Entities")]
 [assembly: InternalsVisibleTo("Unity.UIElements.RuntimeShim")]
 [assembly: InternalsVisibleTo("Unity.Tiny.CloudBuild")]
+[assembly: InternalsVisibleTo("Unity.Tiny.Animation.Tests")] // See: https://unity3d.atlassian.net/browse/DOTSR-1940
 
 namespace Unity.Tiny.Rendering
 {
@@ -531,10 +532,8 @@ namespace Unity.Tiny.Rendering
             init.debug = 0;
 #endif
 
-            m_maxPerThreadData = JobsUtility.JobWorkerCount; // could be 0 in single threaded mode
-            if (m_maxPerThreadData == 0) // main thread only mode
-                m_maxPerThreadData = 1;
-
+            m_maxPerThreadData = JobsUtility.JobWorkerCount + 1;
+            RenderDebug.LogFormat ( "Allocating {0} per thread data instances for rendering.", m_maxPerThreadData);
             init.platformData = m_platformData;
             init.type = rendererType;
             init.resolution.width = (uint)di.framebufferWidth;
@@ -1035,6 +1034,7 @@ namespace Unity.Tiny.Rendering
                 }
             }
 
+            Assert.IsTrue(m_instancePtr->m_maxPerThreadData >= JobsUtility.JobWorkerCount + 1, "Tiny Rendering does not handle increasing JobWorkerCount at runtime yet.");
             var di = GetSingleton<DisplayInfo>();
             var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
             m_instancePtr->ResetIfNeeded(di, nwh);

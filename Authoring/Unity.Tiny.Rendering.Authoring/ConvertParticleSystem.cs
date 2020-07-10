@@ -17,6 +17,7 @@ namespace Unity.TinyConversion
             Entities.ForEach((UnityEngine.ParticleSystemRenderer uParticleSystemRenderer) =>
             {
                 DeclareReferencedAsset(uParticleSystemRenderer.sharedMaterial);
+                DeclareAssetDependency(uParticleSystemRenderer.gameObject, uParticleSystemRenderer.sharedMaterial);
 
                 if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh)
                 {
@@ -24,6 +25,7 @@ namespace Unity.TinyConversion
                         UnityEngine.Debug.LogWarning("Missing mesh in ParticleSystemRenderer on gameobject: " + uParticleSystemRenderer.gameObject.name);
 
                     DeclareReferencedAsset(uParticleSystemRenderer.mesh);
+                    DeclareAssetDependency(uParticleSystemRenderer.gameObject, uParticleSystemRenderer.mesh);
                 }
             });
     }

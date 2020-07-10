@@ -1,9 +1,7 @@
 ﻿#if UNITY_EDITOR
 ﻿
 using System;
- using System.Runtime.InteropServices;
- using Unity.Collections.LowLevel.Unsafe;
-using Unity.Mathematics;
+using Unity.Collections.LowLevel.Unsafe;
 using UnityEditor;
 using UnityEditor.Networking.PlayerConnection;
 using UnityEngine;
@@ -19,27 +17,26 @@ namespace Unity.Tiny.Rendering
     static class SceneViewConnectionService
     {
         static bool s_IsSyncCameraListenerRegistered;
+        static GameObject s_CameraTransformGameObject;
 
         static SceneViewConnectionService()
         {
             RegisterSyncCameraCallbackListener();
         }
 
-        static void AlignViewToObject(Vector3 cameraLoc, Quaternion cameraRot, float fov)
+        static void AlignViewToCamera(Vector3 cameraLoc, Quaternion cameraRot, float fov)
         {
-            SceneView.lastActiveSceneView.LookAt(
-                cameraLoc + (cameraRot * Vector3.forward) * GetPerspectiveCameraDistance(16, fov),
-                cameraRot);
-            SceneView.lastActiveSceneView.Repaint();
-        }
+            if (s_CameraTransformGameObject == null)
+            {
+                s_CameraTransformGameObject = new GameObject();
+            }
 
-        /**
-         * Based on UnityEditor.SceneView.cs
-         * 0bf6c820627311c279ac50e1ac3f7bfe7f33b299
-         */
-        static float GetPerspectiveCameraDistance(float objectSize, float fov)
-        {
-            return objectSize / Mathf.Sin(fov * 0.5f * Mathf.Deg2Rad);
+            Transform transform = s_CameraTransformGameObject.transform;
+            transform.position = cameraLoc;
+            transform.rotation = cameraRot;
+
+            SceneView.lastActiveSceneView.cameraSettings.fieldOfView = fov;
+            SceneView.lastActiveSceneView.AlignViewToObject(transform);
         }
 
         /**
@@ -57,7 +54,7 @@ namespace Unity.Tiny.Rendering
                 UnsafeUtility.CopyPtrToStructure(pOut, out camInfo);
             }
 
-            AlignViewToObject(camInfo.position, camInfo.rotation, camInfo.fovDegrees);
+            AlignViewToCamera(camInfo.position, camInfo.rotation, camInfo.fovDegrees);
         }
 
         static void RemoveCallBackOnQuit()

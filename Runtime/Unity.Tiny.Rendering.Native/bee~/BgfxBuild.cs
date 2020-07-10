@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Bee.Core;
 using Bee.Stevedore;
+using Bee.Toolchain.Emscripten;
 using Bee.Toolchain.Xcode;
 using NiceIO;
 using Unity.BuildSystem.NativeProgramSupport;
@@ -142,6 +143,8 @@ public class BgfxBuild
         BxLib.PublicIncludeDirectories.Add(c => c.ToolChain is WindowsToolchain, bx.Combine("include/compat/msvc"));
         BxLib.PublicIncludeDirectories.Add(c => c.Platform is MacOSXPlatform, bx.Combine("include/compat/osx"));
         BxLib.PublicIncludeDirectories.Add(c => c.Platform is IosPlatform, bx.Combine("include/compat/ios"));
+        BxLib.CompilerSettingsForEmscripten().Add(Il2Cpp.ManagedDebuggingIsEnabled,
+            c => c.WithMultithreading_Compiler(EmscriptenMultithreadingMode.Enabled));
 
         BimgLib = new NativeProgram("bimg") {
             Exceptions = { false },
@@ -167,6 +170,8 @@ public class BgfxBuild
         BimgLib.CompilerSettingsForMac().Add(c => c.WithObjcArc(false));
         BimgLib.CompilerSettingsForIos().Add(c => c.WithObjcArc(false));
         BimgLib.IncludeDirectories.Add(c => BxLib.PublicIncludeDirectories.For(c));
+        BimgLib.CompilerSettingsForEmscripten().Add(Il2Cpp.ManagedDebuggingIsEnabled,
+            c => c.WithMultithreading_Compiler(EmscriptenMultithreadingMode.Enabled));
 
         BgfxLib = new NativeProgram("bgfx") {
             Exceptions = { false },
@@ -211,7 +216,9 @@ public class BgfxBuild
         // which is what emscripten wants.  Otherwise we fall into a __unix__ path, which includes X11/Xlib.h, and
         // all hell breaks loose.
         BgfxLib.Defines.Add(c => c.Platform is WebGLPlatform, "USE_OZONE");
-    }
 
+        BgfxLib.CompilerSettingsForEmscripten().Add(Il2Cpp.ManagedDebuggingIsEnabled,
+            c => c.WithMultithreading_Compiler(EmscriptenMultithreadingMode.Enabled));
+    }
 }
 

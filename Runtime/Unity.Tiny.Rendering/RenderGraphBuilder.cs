@@ -646,6 +646,16 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate()
         {
+#if !UNITY_DOTSRUNTIME
+            //Do not run this system in any other context than dots runtime
+            return;
+#else
+            CreateRenderGraph();
+#endif
+        }
+
+        void CreateRenderGraph()
+        {
             Dependency.Complete();
 #if RENDERING_FORCE_DIRECT
             Assert.IsTrue(false, "Obsolete script define RENDERING_FORCE_DIRECT enabled. Use the RenderGraphConfig singleton to configure a render graph");

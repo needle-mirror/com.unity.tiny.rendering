@@ -35,6 +35,8 @@ namespace Unity.Tiny.Authoring
                 comp.camera = entityCamera;
                 var entity = GetPrimaryEntity(uLight);
                 DstEntityManager.AddComponentData(entity, comp);
+
+                DeclareDependency(uLight.gameObject, uLight.mainCamera);
             });
         }
     }

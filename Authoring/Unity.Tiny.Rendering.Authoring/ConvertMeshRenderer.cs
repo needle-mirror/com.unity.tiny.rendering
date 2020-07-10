@@ -23,7 +23,18 @@ namespace Unity.TinyConversion
                     return;
 
                 foreach (Material mat in uMeshRenderer.sharedMaterials)
+                {
                     DeclareReferencedAsset(mat);
+                    DeclareAssetDependency(uMeshRenderer.gameObject, mat);
+
+                    int[] ids = mat.GetTexturePropertyNameIDs();
+                    for (int i = 0; i < ids.Length; i++)
+                    {
+                        var texture = mat.GetTexture(ids[i]);
+                        if( texture != null)
+                            DeclareAssetDependency(uMeshRenderer.gameObject, texture);
+                    }
+                }
 
                 MeshFilter uMeshFilter = uMeshRenderer.gameObject.GetComponent<MeshFilter>();
                 if (uMeshFilter == null)
@@ -33,6 +44,7 @@ namespace Unity.TinyConversion
                     UnityEngine.Debug.LogWarning("Missing mesh in MeshFilter on gameobject: " + uMeshRenderer.gameObject.name);
 
                 DeclareReferencedAsset(uMeshFilter.sharedMesh);
+                DeclareAssetDependency(uMeshRenderer.gameObject, uMeshFilter.sharedMesh);
             });
         }
     }
