@@ -1,13 +1,9 @@
-#if ENABLE_PROFILER && UNITY_DOTSPLAYER
-#define TINY_BGFX_PROFILER
-#endif
-
 using System;
 using Unity.Mathematics;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Tiny.Assertions;
-#if UNITY_DOTSPLAYER
+#if UNITY_DOTSRUNTIME
 #if !UNITY_WEBGL
 using Unity.Tiny.STB;
 #else
@@ -23,20 +19,23 @@ using Unity.Jobs;
 #if UNITY_MACOSX
 using Unity.Tiny.GLFW;
 #endif
-#if TINY_BGFX_PROFILER
-using Unity.Development;
+#if ENABLE_DOTSRUNTIME_PROFILER
+using Unity.Development.Profiling;
+using Unity.Profiling.LowLevel.Unsafe;
 #endif
 
 [assembly: InternalsVisibleTo("Unity.Tiny.RendererExtras")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Rendering.CPU.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Android")]
-[assembly: InternalsVisibleTo("Unity.2D.Entities.Runtime")]
-[assembly: InternalsVisibleTo("Unity.2D.Entities.Runtime.Native")]
-[assembly: InternalsVisibleTo("Unity.2D.Entities.Authoring.Native")]
-[assembly: InternalsVisibleTo("Unity.2D.Entities.TestFixture")]
-[assembly: InternalsVisibleTo("Unity.2D.Entities.Tests")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.Tiny")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.SpriteRenderer.Tiny")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.SpriteMask.Tiny")]
+[assembly: InternalsVisibleTo("Unity.2D.Entities.Tiny.Tests")]
 [assembly: InternalsVisibleTo("Unity.Tiny.Text.Native")]
+[assembly: InternalsVisibleTo("Unity.UIElements.Entities")]
+[assembly: InternalsVisibleTo("Unity.UIElements.RuntimeShim")]
+[assembly: InternalsVisibleTo("Unity.Tiny.CloudBuild")]
 
 namespace Unity.Tiny.Rendering
 {
@@ -79,7 +78,6 @@ namespace Unity.Tiny.Rendering
     {
         public bgfx.FrameBufferHandle handle;
     }
-
 
     internal unsafe struct PerThreadDataBGFX
     {
@@ -156,20 +154,6 @@ namespace Unity.Tiny.Rendering
             if (x < iMin) return iMin;
             if (x > iMax) return iMax;
             return x;
-        }
-
-        static public float4 ColorToFloat4(Color c)
-        {
-            return new float4(c.r, c.g, c.b, c.a);
-        }
-
-        static public uint PackColorBGFX(float4 c)
-        {
-            int ri = Clamp((int)(c.x * 255.0f), 0, 255);
-            int gi = Clamp((int)(c.y * 255.0f), 0, 255);
-            int bi = Clamp((int)(c.z * 255.0f), 0, 255);
-            int ai = Clamp((int)(c.w * 255.0f), 0, 255);
-            return ((uint)ai << 0) | ((uint)bi << 8) | ((uint)gi << 16) | ((uint)ri << 24);
         }
 
         public static ulong MakeBGFXBlend(bgfx.StateFlags srcRGB, bgfx.StateFlags dstRGB)
@@ -274,9 +258,11 @@ namespace Unity.Tiny.Rendering
         public SimpleShader m_simpleShader;
         public LineShader m_lineShader;
         public LitShader m_litShader;
+        public LitSkinnedMeshShader m_litSkinnedMeshShader;
         public ZOnlyShader m_zOnlyShader;
         public BlitShader m_blitShader;
         public ShadowMapShader m_shadowMapShader;
+        public SkinnedMeshShadowMapShader m_skinnedMeshShadowMapShader;
 
         public MeshBGFX m_quadMesh;
         public AABB m_quadMeshBounds;
@@ -304,36 +290,102 @@ namespace Unity.Tiny.Rendering
         public bool m_blitPrimarySRGB;
 
         public bgfx.PlatformData m_platformData;
-#if TINY_BGFX_PROFILER
-        private Profiling.ProfilerMarker m_markerFrame;
+#if ENABLE_DOTSRUNTIME_PROFILER
+        private IntPtr m_markerFrame;
+        private IntPtr m_markerEncoders;
 
-        private static IntPtr m_mainThreadId = Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId();
+        // WebGL does not have a render thread to track
+#if !UNITY_WEBGL
+        private struct BgfxProfilerInit
+        {
+            internal bool m_renderThreadInitialized;
+            internal IntPtr m_renderThreadId;
+            internal Profiling.ProfilerMarker m_markerRenderThreadRoot;
+        }
+        private static readonly Burst.SharedStatic<BgfxProfilerInit> s_profilerInit = Burst.SharedStatic<BgfxProfilerInit>.GetOrCreate<BgfxProfilerInit>();
+#endif
 
         [MonoPInvokeCallback]
         private static unsafe void ProfilerBeginCallbackFunc(byte* name, int bytes)
         {
-            // @@todo - API thread (main thread) only until multithreaded support lands in profiler/player connection
-            if (Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId() == m_mainThreadId)
-            {
-                IntPtr marker = (IntPtr)Development.Profiler.MarkerGetOrCreate(Unity.Profiling.LowLevel.Unsafe.ProfilerUnsafeUtility.CategoryRender, name, bytes, (ushort)Profiling.LowLevel.MarkerFlags.Script);
-                uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
+            IntPtr marker = (IntPtr)Profiler.MarkerGetOrCreate(ProfilerUnsafeUtility.CategoryRender, name, bytes, (ushort)Profiling.LowLevel.MarkerFlags.Script);
+            uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
 
-                ProfilerProtocolThread.SendBeginSample(markerId, Profiler.GetProfilerTime());
-                UnityEngine.Profiling.Profiler.beginStack[UnityEngine.Profiling.Profiler.stackPos++] = marker;
+#if !UNITY_WEBGL
+            bool renderThreadSkipFirstRoot = false;  // We must hack around a hack in unity editor introduced to deal with an issue with big unity player builds
+
+            // If the thread isn't setup, it must be the render thread, as encoder threads will be job workers and should
+            // be setup already.
+            if (!s_profilerInit.Data.m_renderThreadInitialized)
+            {
+                FixedString32 str = new FixedString32("bgfx::renderFrame");
+                bool rootRender = (bytes >= str.Length) && (UnsafeUtility.MemCmp(name, ((byte*)&str) + 2, str.Length) == 0);
+                if (s_profilerInit.Data.m_renderThreadId == IntPtr.Zero)
+                {
+                    if (rootRender)
+                    {
+                        s_profilerInit.Data.m_renderThreadId = Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId();
+                        Profiler.ThreadSetInfo((ulong)s_profilerInit.Data.m_renderThreadId, Profiler.GetProfilerTime(), false, "", "Render Thread");
+                    }
+                    else
+                        return;
+                }
+
+                if (s_profilerInit.Data.m_renderThreadId == Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId())
+                {
+                    // We can't enable the render thread to profile until the root marker begins. This happens MID-FRAME,
+                    // we we have to detect it. Otherwise, if profiling is enabled in general and we just start sending
+                    // render thread profiling data, hierarchy gets corrupted along with profiler data sent to the editor.
+                    if (rootRender && PlayerConnectionProfiler.Enabled)
+                    {
+                        s_profilerInit.Data.m_renderThreadInitialized = true;
+                        renderThreadSkipFirstRoot = true;
+                    }
+                    else
+                        return;
+                }
+
+                // If not the render thread, must be an encoder thread, so we can just keep going
             }
+
+            if (s_profilerInit.Data.m_renderThreadId == Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId())
+            {
+                if (ProfilerProtocolThread.Stream.markerStack.stackPos == 0)
+                {
+                    ProfilerProtocolThread.SendNewFrame();
+                    if (!renderThreadSkipFirstRoot)
+                        s_profilerInit.Data.m_markerRenderThreadRoot.Begin();
+                }
+            }
+
+            if (ProfilerProtocolThread.SendBeginSample(markerId, Profiler.GetProfilerTime()))
+                ProfilerProtocolThread.Stream.markerStack.PushMarker(marker);
+            else
+                s_profilerInit.Data.m_renderThreadInitialized = false;  // Need to process next "first frame" in order to do the skip-first-root hack
+#else
+            ProfilerProtocolThread.SendBeginSample(markerId, Profiler.GetProfilerTime());
+            ProfilerProtocolThread.Stream.markerStack.PushMarker(marker);
+#endif
         }
 
         [MonoPInvokeCallback]
         private static unsafe void ProfilerEndCallbackFunc()
         {
-            // @@todo - API thread (main thread) only until multithreaded support lands in profiler/player connection
-            if (Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId() == m_mainThreadId)
-            {
-                UnityEngine.Profiling.Profiler.stackPos--;
-                IntPtr marker = UnityEngine.Profiling.Profiler.beginStack[UnityEngine.Profiling.Profiler.stackPos];
-                uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
-                ProfilerProtocolThread.SendEndSample(markerId, Profiler.GetProfilerTime());
-            }
+#if !UNITY_WEBGL
+            // Once profiling is turned on, this could be the end of a previous frame's render thread which goes beyond frame bounds.
+            // (Frame bounds are when we determine if profiling should be turned on or off)
+            int stackPos = ProfilerProtocolThread.Stream.markerStack.stackPos;
+            if (stackPos == 0)
+                return;
+#endif
+            IntPtr marker = ProfilerProtocolThread.Stream.markerStack.PopMarker();
+            uint markerId = ((Profiler.MarkerBucketNode*)marker)->markerId;
+            ProfilerProtocolThread.SendEndSample(markerId, Profiler.GetProfilerTime());
+
+#if !UNITY_WEBGL
+            if (stackPos == 1 && s_profilerInit.Data.m_renderThreadId == Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId())
+                s_profilerInit.Data.m_markerRenderThreadRoot.End();
+#endif
         }
 
         private static bgfx.ProfilerBeginCallback m_profilerBeginCallback = ProfilerBeginCallbackFunc;
@@ -386,10 +438,12 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_texture(m_noShadow);
             m_simpleShader.Destroy();
             m_litShader.Destroy();
+            m_litSkinnedMeshShader.Destroy();
             m_lineShader.Destroy();
             m_zOnlyShader.Destroy();
             m_blitShader.Destroy();
             m_shadowMapShader.Destroy();
+            m_skinnedMeshShadowMapShader.Destroy();
             m_externalBlitES3Shader.Destroy();
             m_quadMesh.Destroy();
             bgfx.shutdown();
@@ -406,8 +460,14 @@ namespace Unity.Tiny.Rendering
 
             var rendererType = bgfx.RendererType.Count; // Auto
 
-#if TINY_BGFX_PROFILER
-            m_markerFrame = new Profiling.ProfilerMarker("RendererBGFXInstance.Frame");
+#if ENABLE_DOTSRUNTIME_PROFILER
+            m_markerFrame = ProfilerUnsafeUtility.CreateMarker("Frame()", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+            m_markerEncoders = ProfilerUnsafeUtility.CreateMarker("WaitForEncoders()", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+#if !UNITY_WEBGL
+            s_profilerInit.Data.m_markerRenderThreadRoot = new Profiling.ProfilerMarker("Hidden BGFX Render thread root");
+            s_profilerInit.Data.m_renderThreadInitialized = false;
+            s_profilerInit.Data.m_renderThreadId = IntPtr.Zero;
+#endif
 #endif
 
 #if RENDERING_FORCE_OPENGL
@@ -451,12 +511,13 @@ namespace Unity.Tiny.Rendering
             fixed(bgfx.PlatformData*pd = &m_platformData)
             bgfx.set_platform_data(pd);
 
-#if TINY_BGFX_PROFILER
+#if ENABLE_DOTSRUNTIME_PROFILER
             IntPtr mainThreadId = Baselib.LowLevel.Binding.Baselib_Thread_GetCurrentThreadId();
 #endif
 
             bgfx.Init init = new bgfx.Init();
-#if TINY_BGFX_PROFILER
+            init.allocator = bgfx.AllocatorInit();
+#if ENABLE_DOTSRUNTIME_PROFILER
             init.profile = 1;
             init.callback = bgfx.CallbacksInit(Marshal.GetFunctionPointerForDelegate(m_profilerBeginCallback), Marshal.GetFunctionPointerForDelegate(m_profilerEndCallback));
 #else
@@ -528,6 +589,8 @@ namespace Unity.Tiny.Rendering
                 bgfx.vertex_layout_add(p, bgfx.Attrib.TexCoord0, 2, bgfx.AttribType.Float, false, false);
                 bgfx.vertex_layout_add(p, bgfx.Attrib.Normal, 3, bgfx.AttribType.Float, false, false);
                 bgfx.vertex_layout_add(p, bgfx.Attrib.Tangent, 3, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(p, bgfx.Attrib.Weight, 4, bgfx.AttribType.Float, false, false);
+                bgfx.vertex_layout_add(p, bgfx.Attrib.Indices, 4, bgfx.AttribType.Float, false, false);
                 bgfx.vertex_layout_add(p, bgfx.Attrib.TexCoord1, 3, bgfx.AttribType.Float, false, false); // billboard position
                 bgfx.vertex_layout_add(p, bgfx.Attrib.Color0, 4, bgfx.AttribType.Float, false, false); // albedo
                 bgfx.vertex_layout_add(p, bgfx.Attrib.TexCoord2, 2, bgfx.AttribType.Float, false, false); // metal_smoothness
@@ -545,7 +608,7 @@ namespace Unity.Tiny.Rendering
             using (var shaderQuery = em.CreateEntityQuery(typeof(PrecompiledShader), typeof(VertexShaderBinData),
                 typeof(FragmentShaderBinData)))
             {
-                using (var shaderEntities = shaderQuery.ToEntityArray(Allocator.Temp))
+                using (var shaderEntities = shaderQuery.ToEntityArray(Allocator.TempJob))
                 {
                     foreach (var shaderE in shaderEntities)
                     {
@@ -557,6 +620,8 @@ namespace Unity.Tiny.Rendering
                             m_simpleShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
                         else if (shader.Guid == ShaderType.simplelit)
                             m_litShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
+                        else if (shader.Guid == ShaderType.simplelitgpuskinning)
+                            m_litSkinnedMeshShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
                         else if (shader.Guid == ShaderType.line)
                             m_lineShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
                         else if (shader.Guid == ShaderType.zOnly)
@@ -565,6 +630,8 @@ namespace Unity.Tiny.Rendering
                             m_blitShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
                         else if (shader.Guid == ShaderType.shadowmap)
                             m_shadowMapShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
+                        else if (shader.Guid == ShaderType.shadowmapgpuskinning)
+                            m_skinnedMeshShadowMapShader.Init(BGFXShaderHelper.GetPrecompiledShaderData(backend, vbin, fbin, ref shader.Name));
                         else
                             foundShaders--;
                     }
@@ -572,7 +639,7 @@ namespace Unity.Tiny.Rendering
             }
 
             // must have all shaders
-            if (foundShaders != 6)
+            if (foundShaders != 8)
                 throw new Exception("Couldn't find all needed core precompiled shaders");
 
             // default texture
@@ -614,29 +681,41 @@ namespace Unity.Tiny.Rendering
             m_initialized = true;
         }
 
+        public void WaitForEncoders()
+        {
+            if (!m_initialized)
+                return;
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.BeginSample(m_markerEncoders);
+#endif
+            for (int i = 0; i < m_maxPerThreadData; i++)
+            {
+                if (m_perThreadData[i].encoder != null)
+                {
+                    bgfx.encoder_end(m_perThreadData[i].encoder);
+                    m_perThreadData[i].encoder = null;
+                }
+            }
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.EndSample(m_markerEncoders);
+#endif
+        }
+
         public void Frame()
         {
             if (!m_initialized)
                 return;
-#if TINY_BGFX_PROFILER
-            using (m_markerFrame.Auto())
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.BeginSample(m_markerFrame);
 #endif
-            {
-                for (int i = 0; i < m_maxPerThreadData; i++)
-                {
-                    if (m_perThreadData[i].encoder != null)
-                    {
-                        bgfx.encoder_end(m_perThreadData[i].encoder);
-                        m_perThreadData[i].encoder = null;
-                    }
-                }
+            // go bgfx!
+            bgfx.frame(false);
 
-                // go bgfx!
-                bgfx.frame(false);
-
-                m_frameFlags = 0;
-                bgfx.set_debug(m_persistentFlags);
-            }
+            m_frameFlags = 0;
+            bgfx.set_debug(m_persistentFlags);
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.EndSample(m_markerFrame);
+#endif
         }
 
         public void FlushViewSpaceCache()
@@ -713,12 +792,12 @@ namespace Unity.Tiny.Rendering
         private RendererBGFXInstance *m_instancePtr;
         private NativeArray<PerThreadDataBGFX> m_allocPerThreadData;
 
-#if TINY_BGFX_PROFILER
-        private Profiling.ProfilerMarker m_markerUpdate = new Profiling.ProfilerMarker("RendererBGFXSystem.OnUpdate");
-        private Profiling.ProfilerMarker m_markerUpdateUpload = new Profiling.ProfilerMarker("Upload data");
-        private Profiling.ProfilerMarker m_markerUpdateCallbacks = new Profiling.ProfilerMarker("Process callbacks");
-        private Profiling.ProfilerMarker m_markerUpdateReinit = new Profiling.ProfilerMarker("Re-initialize");
-        private Profiling.ProfilerMarker m_markerUpdateJobs = new Profiling.ProfilerMarker("Complete job dependencies");
+#if ENABLE_DOTSRUNTIME_PROFILER
+        private IntPtr m_markerUpdate = ProfilerUnsafeUtility.CreateMarker("RendererBGFXSystem.OnUpdate", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+        private IntPtr m_markerUpdateUpload = ProfilerUnsafeUtility.CreateMarker("Upload data", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+        private IntPtr m_markerUpdateCallbacks = ProfilerUnsafeUtility.CreateMarker("Process callbacks", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+        private IntPtr m_markerUpdateReinit = ProfilerUnsafeUtility.CreateMarker("Re-initialize", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
+        private IntPtr m_markerUpdateJobs = ProfilerUnsafeUtility.CreateMarker("Complete job dependencies", ProfilerUnsafeUtility.CategoryRender, Profiling.LowLevel.MarkerFlags.Default, 0);
 #endif
 
         public int m_screenShotWidth;
@@ -779,6 +858,10 @@ namespace Unity.Tiny.Rendering
                     bgfx.destroy_texture(tex.handle);
                 ecb.RemoveComponent<TextureBGFX>(e);
             }).Run();
+
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.Stats.drawStats.renderTextureCount = 0;
+#endif
 
             // remove material caches
             Entities.WithAll<LitMaterialBGFX>().ForEach((Entity e) =>
@@ -921,61 +1004,63 @@ namespace Unity.Tiny.Rendering
 
         protected override void OnUpdate()
         {
-#if TINY_BGFX_PROFILER
-            using (m_markerUpdate.Auto())
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.BeginSample(m_markerUpdate);
+            ProfilerUnsafeUtility.BeginSample(m_markerUpdateJobs);
 #endif
+            Dependency.Complete();
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.EndSample(m_markerUpdateJobs);
+#endif
+            if (!IsInitialized())
             {
-#if TINY_BGFX_PROFILER
-                using (m_markerUpdateJobs.Auto())
-#endif
+                if (m_instancePtr != null && m_instancePtr->m_resume)
                 {
-                    Dependency.Complete();
+#if ENABLE_DOTSRUNTIME_PROFILER
+                    ProfilerUnsafeUtility.BeginSample(m_markerUpdateReinit);
+#endif
+                    Init();
+                    ReloadAllImages();
+                    m_instancePtr->m_resume = false;
+#if ENABLE_DOTSRUNTIME_PROFILER
+                    ProfilerUnsafeUtility.EndSample(m_markerUpdateReinit);
+#endif
                 }
-                if (!IsInitialized())
+                else
                 {
-                    if (m_instancePtr != null && m_instancePtr->m_resume)
-                    {
-#if TINY_BGFX_PROFILER
-                        using (m_markerUpdateReinit.Auto())
+#if ENABLE_DOTSRUNTIME_PROFILER
+                    ProfilerUnsafeUtility.EndSample(m_markerUpdate);
 #endif
-                        {
-                            Init();
-                            ReloadAllImages();
-                            m_instancePtr->m_resume = false;
-                        }
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
-
-                var di = GetSingleton<DisplayInfo>();
-                var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
-                m_instancePtr->ResetIfNeeded(di, nwh);
-                m_instancePtr->FlushViewSpaceCache();
-#if TINY_BGFX_PROFILER
-                using (m_markerUpdateUpload.Auto())
-#endif
-                {
-                    UploadTextures();
-                    UploadMeshes();
-                    UpdateRTT();
-                    UpdateExternalTextures();
-                }
-#if TINY_BGFX_PROFILER
-                using (m_markerUpdateCallbacks.Auto())
-#endif
-                {
-                    HandleCallbacks();
+                    return;
                 }
             }
+
+            var di = GetSingleton<DisplayInfo>();
+            var nwh = World.GetExistingSystem<WindowSystem>().GetPlatformWindowHandle();
+            m_instancePtr->ResetIfNeeded(di, nwh);
+            m_instancePtr->FlushViewSpaceCache();
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.BeginSample(m_markerUpdateUpload);
+#endif
+            UploadTextures();
+            UploadMeshes();
+            UpdateRTT();
+            UpdateExternalTextures();
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.EndSample(m_markerUpdateUpload);
+            ProfilerUnsafeUtility.BeginSample(m_markerUpdateCallbacks);
+#endif
+            HandleCallbacks();
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerUnsafeUtility.EndSample(m_markerUpdateCallbacks);
+            ProfilerUnsafeUtility.EndSample(m_markerUpdate);
+#endif
         }
 
         private void UploadMeshes()
         {
             var inst = InstancePointer();
-            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
+            EntityCommandBuffer ecb;
 #if DEBUG
             // assert component combinations - all of those combinations are illegal
             int kBad = 0;
@@ -1017,6 +1102,8 @@ namespace Unity.Tiny.Rendering
             }).Run();
             Assert.IsTrue(kBad == 0);
 #endif
+            ecb = new EntityCommandBuffer(Allocator.TempJob);
+
             // create and upload new ones: from blob asset, always static
             Entities.WithNone<MeshBGFX>().ForEach((Entity e, ref SimpleMeshRenderData meshData) => {
                 ecb.AddComponent(e, MeshBGFX.CreateStaticMeshFromBlobAsset(inst, meshData));
@@ -1025,42 +1112,47 @@ namespace Unity.Tiny.Rendering
                 ecb.AddComponent(e, MeshBGFX.CreateStaticMeshFromBlobAsset(inst, meshData));
             }).Run();
 
-            // create and upload new ones: from buffer, can be static or dynamic
-            Entities.WithNone<MeshBGFX>().WithAll<DynamicLitVertex>().ForEach((Entity e, ref DynamicMeshData dnm) => {
-                if (dnm.UseDynamicGPUBuffer)
-                    ecb.AddComponent(e, MeshBGFX.CreateDynamicMeshLit(inst, dnm.VertexCapacity, dnm.IndexCapacity));
-                else
-                    ecb.AddComponent(e, MeshBGFX.CreateEmpty()); // dynamic source, static target
-            }).Run();
-            Entities.WithNone<MeshBGFX>().WithAll<DynamicSimpleVertex>().ForEach((Entity e, ref DynamicMeshData dnm) => {
-                if (dnm.UseDynamicGPUBuffer)
-                    ecb.AddComponent(e, MeshBGFX.CreateDynamicMeshSimple(inst, dnm.VertexCapacity, dnm.IndexCapacity));
-                else
-                    ecb.AddComponent(e, MeshBGFX.CreateEmpty()); // dynamic source, static target
-            }).Run();
+            // Add a MeshBGFX component to dynamic meshes that don't have one
+
+            // TODO change "Empty" MeshBGFX to be all zeros, then use a query with a single bulk AddComponent
+            Entities.WithNone<MeshBGFX>().WithAny<DynamicMeshData>()
+                .ForEach((Entity e) => ecb.AddComponent(e, MeshBGFX.CreateEmpty()))
+                .Run();
+
             ecb.Playback(EntityManager);
             ecb.Dispose();
 
-            // now everything that can possibly need one does have a MeshBGFX component
+            // then actually create dynamic buffers, re-creating or re-sizing if needed
+            Entities
+                .WithAll<DynamicSimpleVertex, DynamicIndex>()
+                .WithChangeFilter<DynamicMeshData>()
+                .ForEach((Entity e, ref MeshBGFX mb, ref DynamicMeshData dnm) =>
+            {
+                if (mb.IsValidFor(dnm))
+                    return;
+                mb.Destroy();
+                if (dnm.UseDynamicGPUBuffer)
+                    mb = MeshBGFX.CreateDynamicMeshSimple(inst, dnm.VertexCapacity, dnm.IndexCapacity);
+            }).Run();
 
-            // dynamic meshes, re-create or re-size if needed
-            Entities.WithAny<DynamicLitVertex, DynamicSimpleVertex>().WithAll<DynamicIndex>().ForEach((Entity e, ref MeshBGFX mb, ref DynamicMeshData dnm) => { // lit, static -> to dynamic transition
-                if (dnm.UseDynamicGPUBuffer && !mb.IsDynamic())     // re-allocate as dynamic
-                {
-                    mb.Destroy();
+            Entities
+                .WithAll<DynamicLitVertex, DynamicIndex>()
+                .WithChangeFilter<DynamicMeshData>()
+                .ForEach((Entity e, ref MeshBGFX mb, ref DynamicMeshData dnm) =>
+            {
+                if (mb.IsValidFor(dnm))
+                    return;
+
+                mb.Destroy();
+
+                if (dnm.UseDynamicGPUBuffer)
                     mb = MeshBGFX.CreateDynamicMeshLit(inst, dnm.VertexCapacity, dnm.IndexCapacity);
-                }
-                else if (!dnm.UseDynamicGPUBuffer && mb.IsDynamic())      // re-allocate as static
-                {
-                    mb.Destroy();
-                    mb = MeshBGFX.CreateEmpty();
-                }
             }).Run();
 
             // dynamic meshes, dynamic buffer: re-upload if dirty
             // static meshes, dynamic buffer: re-create if dirty
             Entities.ForEach((Entity e, DynamicBuffer<DynamicSimpleVertex> vertexSrc, DynamicBuffer<DynamicIndex> indexSrc, ref MeshBGFX dest, ref DynamicMeshData src) => {
-                if (!src.Dirty)
+                if (!src.Dirty && src.NumIndices == dest.IndexCount && src.NumVertices == dest.VertexCount)
                     return;
                 if (src.UseDynamicGPUBuffer)
                 {
@@ -1081,7 +1173,7 @@ namespace Unity.Tiny.Rendering
             }).Run();
 
             Entities.ForEach((Entity e, DynamicBuffer<DynamicLitVertex> vertexSrc, DynamicBuffer<DynamicIndex> indexSrc, ref MeshBGFX dest, ref DynamicMeshData src) => {
-                if (!src.Dirty)
+                if (!src.Dirty && src.NumIndices == dest.IndexCount && src.NumVertices == dest.VertexCount)
                     return;
                 if (src.UseDynamicGPUBuffer)
                 {
@@ -1138,7 +1230,7 @@ namespace Unity.Tiny.Rendering
                 });
                 RenderDebug.LogFormat("Uploaded BGFX texture {0},{1} from memory to bgfx index {2}", w, h, (int)texHandle.idx);
             }).Run();
-#if UNITY_DOTSPLAYER
+#if UNITY_DOTSRUNTIME
 #if !UNITY_WEBGL
             Entities.WithoutBurst().WithNone<TextureBGFX>().ForEach((Entity e, ref Image2D im2d, ref Image2DSTB imstb) =>
             {
@@ -1146,9 +1238,9 @@ namespace Unity.Tiny.Rendering
                     return;
                 RendererBGFXStatic.AdjustFlagsForPot(ref im2d);
                 bgfx.TextureHandle texHandle;
+                int w = 0;
+                int h = 0;
                 unsafe {
-                    int w = 0;
-                    int h = 0;
                     byte* pixels = ImageIOSTBNativeCalls.GetImageFromHandle(imstb.imageHandle, ref w, ref h);
                     bool isSRGB = (im2d.flags & TextureFlags.Srgb) == TextureFlags.Srgb;
                     bool makeMips = (im2d.flags & TextureFlags.MimapEnabled) == TextureFlags.MimapEnabled;
@@ -1197,13 +1289,45 @@ namespace Unity.Tiny.Rendering
             ecb.Dispose();
         }
 
-        private void UpdateRTT()
+        void RemoveTextureBGFX(Entity e)
+        {
+            if (e == Entity.Null ) return;
+            if (!EntityManager.HasComponent<TextureBGFX>(e) ) return;
+            var tex = EntityManager.GetComponentData<TextureBGFX>(e);
+            bgfx.destroy_texture(tex.handle);
+            EntityManager.RemoveComponent<TextureBGFX>(e);
+#if ENABLE_DOTSPLAYER_PROFILER
+            ProfilerStats.Stats.drawStats.renderTextureCount--;
+#endif
+        }
+
+        void UpdateRTT()
         {
             var instPtr = InstancePointer();
+
             // create bgfx textures for rtt textures
-            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
-            Entities.WithoutBurst().WithNone<TextureBGFX>().ForEach((Entity e, ref Image2D im2d, ref Image2DRenderToTexture rtt) =>
+            // remove framebuffers if RenderNode vanished
+            Entities.WithNone<RenderNodeTexture>().WithStructuralChanges().ForEach((Entity e, ref FramebufferBGFX fb) =>
             {
+                bgfx.destroy_frame_buffer(fb.handle);
+                EntityManager.RemoveComponent<FramebufferBGFX>(e);
+            }).Run();
+
+            // if a render node texture needs resizing, get rid of all the associated bgfx things here
+            Entities.WithoutBurst().WithStructuralChanges().WithChangeFilter<RenderNodeAutoScaleToDisplay>().ForEach((Entity e, ref RenderNodeAutoScaleToDisplay rnastd, ref RenderNodeTexture rtt) => {
+                if ( !rnastd.Resized ) return;
+                RemoveTextureBGFX(rtt.colorTexture);
+                RemoveTextureBGFX(rtt.depthTexture);
+                rnastd.Resized = false;
+                if (EntityManager.HasComponent<FramebufferBGFX>(e) ) {
+                    FramebufferBGFX fb = EntityManager.GetComponentData<FramebufferBGFX>(e);
+                    bgfx.destroy_frame_buffer(fb.handle);
+                    EntityManager.RemoveComponent<FramebufferBGFX>(e);
+                }
+            }).Run();
+
+            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.Temp);
+            Entities.WithoutBurst().WithNone<TextureBGFX>().ForEach((Entity e, ref Image2D im2d, ref Image2DRenderToTexture rtt) => {
                 ushort w = (ushort)im2d.imagePixelWidth;
                 ushort h = (ushort)im2d.imagePixelHeight;
                 bgfx.TextureFormat fmt = bgfx.TextureFormat.Unknown;
@@ -1245,6 +1369,9 @@ namespace Unity.Tiny.Rendering
 #if RENDERING_ENABLE_TRACE
                 RenderDebug.LogFormat("Created BGFX render target texture {0},{1} to bgfx index {2}. Format {3}, Flags {4}",
                     (int)w, (int)h, (int)handle.idx, fmt, RendererBGFXStatic.BGFXSamplerFlagsToString(flags));
+#endif
+#if ENABLE_DOTSPLAYER_PROFILER
+                ProfilerStats.Stats.drawStats.renderTextureCount++;
 #endif
             }).Run();
             ecb.Playback(EntityManager);
@@ -1341,7 +1468,7 @@ namespace Unity.Tiny.Rendering
                 if (ncam == 0) bgfx.dbg_text_printf(0, 1, 0xf, "No cameras in scene.", null);
                 float t = (float)World.Time.ElapsedTime * .25f;
                 float4 warncolor = new float4(math.abs(math.sin(t)), math.abs(math.cos(t * .23f)) * .8f, math.abs(math.sin(t * 7.0f)) * .3f, 1.0f);
-                clearcolor = RendererBGFXStatic.PackColorBGFX(warncolor);
+                clearcolor = Color.PackFloatABGR(warncolor);
 #endif
                 var di = GetSingleton<DisplayInfo>();
                 bgfx.set_view_rect(0, 0, 0, (ushort)di.framebufferWidth, (ushort)di.framebufferHeight);
@@ -1351,6 +1478,55 @@ namespace Unity.Tiny.Rendering
             }
         }
 
+        private unsafe void CollectProfilerStats(RendererBGFXInstance* instance)
+        {
+#if ENABLE_DOTSRUNTIME_PROFILER
+            var stats = bgfx.get_stats();
+
+            // We'd like to fill out as many stats as possible for the profiler, but only some are either relevant or immediately available
+
+            ProfilerStats.Stats.drawStats.setPassCalls = stats->numViews;  // views is the number of passes
+            ProfilerStats.Stats.drawStats.drawCalls = (int)stats->numDraw;
+            ProfilerStats.Stats.drawStats.triangles1024 = (int)stats->numPrims[0] / 1024;
+            ProfilerStats.Stats.drawStats.vertices1024 = (int)(stats->numPrims[0] * 3 / 6) / 1024;  // 3 vertices per triangle, divided by average valence of 6 which is optimal for a good mesh
+            ProfilerStats.Stats.drawStats.hasInstancing = 0;
+            ProfilerStats.Stats.drawStats.shadowCasters = 0;
+            ProfilerStats.Stats.drawStats.usedTextureCount = stats->numTextures;
+            ProfilerStats.Stats.drawStats.usedTextureKB = (int)stats->textureMemoryUsed / 1024;
+            //ProfilerStats.stats.drawStats.renderTextureCount;   // Calculated in RendererBGFXSystem.UpdateRTT()
+            ProfilerStats.Stats.drawStats.renderTextureKB = (int)stats->rtMemoryUsed / 1024;
+            ProfilerStats.Stats.drawStats.screenWidth = stats->width;
+            ProfilerStats.Stats.drawStats.screenHeight = stats->height;
+            ProfilerStats.Stats.drawStats.screenKB = stats->width * stats->height * 4 / 1024;
+            ProfilerStats.Stats.drawStats.vboTotal = stats->numVertexBuffers;
+            ProfilerStats.Stats.drawStats.totalAvailableVRamMB = (int)(stats->gpuMemoryMax / 1024 / 1024);
+
+            //ProfilerStats.stats.drawStats.batches;
+            //ProfilerStats.stats.drawStats.dynamicBatchedDrawCalls;
+            //ProfilerStats.stats.drawStats.dynamicBatches;
+            //ProfilerStats.stats.drawStats.dynamicBatchedTriangles;
+            //ProfilerStats.stats.drawStats.dynamicBatchedVertices;
+            //ProfilerStats.stats.drawStats.staticBatchedDrawCalls;
+            //ProfilerStats.stats.drawStats.staticBatches;
+            //ProfilerStats.stats.drawStats.staticBatchedTriangles;
+            //ProfilerStats.stats.drawStats.staticBatchedVertices;
+            //ProfilerStats.stats.drawStats.instancedBatchedDrawCalls;
+            //ProfilerStats.stats.drawStats.instancedBatches;
+            //ProfilerStats.stats.drawStats.instancedTriangles;
+            //ProfilerStats.stats.drawStats.instancedVertices;
+            //ProfilerStats.stats.drawStats.renderTextureStateChanges;
+            //ProfilerStats.Stats.drawStats.shadowCasters;
+            //ProfilerStats.stats.drawStats.vboTotalBytes;
+            //ProfilerStats.stats.drawStats.vboUploads;
+            //ProfilerStats.stats.drawStats.vboUploadBytes;
+            //ProfilerStats.stats.drawStats.ibUploads;
+            //ProfilerStats.stats.drawStats.ibUploadBytes;
+            //ProfilerStats.stats.drawStats.visibleSkinnedMeshes;
+
+            ProfilerStats.GatheredStats |= ProfilerModes.ProfileRendering;
+#endif
+        }
+
         protected unsafe override void OnUpdate()
         {
             CompleteDependency();
@@ -1358,7 +1534,10 @@ namespace Unity.Tiny.Rendering
             if (sys.IsInitialized())
             {
                 CheckState();
-                sys.InstancePointer()->Frame();
+                var instancePointer = sys.InstancePointer();
+                instancePointer->WaitForEncoders();
+                CollectProfilerStats(instancePointer);
+                instancePointer->Frame();
             }
         }
     }

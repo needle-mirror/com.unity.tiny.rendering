@@ -385,14 +385,14 @@ namespace Unity.Tiny.Rendering
             m_qMissingWorldBoundingSphere = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] {ComponentType.ReadOnly<LocalToWorld>()},
-                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
+                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<SkinnedMeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
                 None = new ComponentType[] {typeof(WorldBoundingSphere)}
             });
 
             m_qMissingWorldBounds = GetEntityQuery(new EntityQueryDesc
             {
                 All = new ComponentType[] {ComponentType.ReadOnly<LocalToWorld>()},
-                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
+                Any = new ComponentType[] {ComponentType.ReadOnly<MeshRenderer>(), ComponentType.ReadOnly<SkinnedMeshRenderer>(), ComponentType.ReadOnly<ObjectBounds>()},
                 None = new ComponentType[] {typeof(WorldBounds)}
             });
         }
@@ -413,6 +413,11 @@ namespace Unity.Tiny.Rendering
             ComponentDataFromEntity<MeshBounds> cmd = GetComponentDataFromEntity<MeshBounds>(true);
             Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref MeshRenderer mr, ref WorldBoundingSphere wbs, ref WorldBounds wb, in LocalToWorld tx) => {
                 var mb = cmd[mr.mesh];
+                UpdateBoundsFromAABB(ref wbs, ref wb, in tx, in mb.Bounds);
+                Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
+            }).Run();
+            Entities.WithNone<ObjectBounds>().ForEach((Entity e, ref SkinnedMeshRenderer smr, ref WorldBoundingSphere wbs, ref WorldBounds wb, ref LocalToWorld tx) => {
+                var mb = cmd[smr.sharedMesh];
                 UpdateBoundsFromAABB(ref wbs, ref wb, in tx, in mb.Bounds);
                 Culling.GrowBounds(ref bbMinWhole, ref bbMaxWhole, wb);
             }).Run();
@@ -437,10 +442,10 @@ namespace Unity.Tiny.Rendering
 
             // update all chunk bounds
             var chunks = m_qUpdateChunkBounds.CreateArchetypeChunkArray(Allocator.TempJob);
-            var chunkBoundsType = EntityManager.GetArchetypeChunkComponentType<ChunkWorldBounds>(false);
-            var worldBoundsType = EntityManager.GetArchetypeChunkComponentType<WorldBounds>(true);
-            var chunkBoundingSphereType = EntityManager.GetArchetypeChunkComponentType<ChunkWorldBoundingSphere>(false);
-            var worldBoundingSphereType = EntityManager.GetArchetypeChunkComponentType<WorldBoundingSphere>(true);
+            var chunkBoundsType = EntityManager.GetComponentTypeHandle<ChunkWorldBounds>(false);
+            var worldBoundsType = EntityManager.GetComponentTypeHandle<WorldBounds>(true);
+            var chunkBoundingSphereType = EntityManager.GetComponentTypeHandle<ChunkWorldBoundingSphere>(false);
+            var worldBoundingSphereType = EntityManager.GetComponentTypeHandle<WorldBoundingSphere>(true);
             for (int i = 0; i < chunks.Length; i++)
             {
                 var chunk = chunks[i];

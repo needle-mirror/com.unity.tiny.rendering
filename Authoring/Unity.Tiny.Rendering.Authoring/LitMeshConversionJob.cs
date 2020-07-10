@@ -19,6 +19,8 @@ namespace Unity.TinyConversion
         [DeallocateOnJobCompletion] public NativeArray<Vector3> Normals;
         [DeallocateOnJobCompletion] public NativeArray<Vector3> Tangents;
         [DeallocateOnJobCompletion] public NativeArray<Vector3> BiTangents;
+        [DeallocateOnJobCompletion] public NativeArray<Vector4> BoneWeights;
+        [DeallocateOnJobCompletion] public NativeArray<Vector4> BoneIndices;
         [DeallocateOnJobCompletion] public NativeArray<Color> Colors;
         [DeallocateOnJobCompletion] public NativeArray<ushort> Indices;
 
@@ -30,6 +32,8 @@ namespace Unity.TinyConversion
             Normals = data.uNormals;
             Tangents = data.uTangents;
             BiTangents = data.uBiTangents;
+            BoneWeights = data.uBoneWeights;
+            BoneIndices = data.uBoneIndices;
             Colors = data.uColors;
             Indices = data.uIndices;
             BlobAssets = blobArray;
@@ -44,9 +48,11 @@ namespace Unity.TinyConversion
                 Debug.Assert((long)&(p->TexCoord0) - (long)p == 12);
                 Debug.Assert((long)&(p->Normal) - (long)p == 20);
                 Debug.Assert((long)&(p->Tangent) - (long)p == 32);
-                Debug.Assert((long)&(p->BillboardPos) - (long)p == 44);
-                Debug.Assert((long)&(p->Albedo_Opacity) - (long)p == 56);
-                Debug.Assert((long)&(p->Metal_Smoothness) - (long)p == 72);
+                Debug.Assert((long)&(p->BoneWeight) - (long)p == 44);
+                Debug.Assert((long)&(p->BoneIndex) - (long)p == 60);
+                Debug.Assert((long)&(p->BillboardPos) - (long)p == 76);
+                Debug.Assert((long)&(p->Albedo_Opacity) - (long)p == 88);
+                Debug.Assert((long)&(p->Metal_Smoothness) - (long)p == 104);
             }
         }
 
@@ -81,6 +87,14 @@ namespace Unity.TinyConversion
                     byte* tangents = (byte*)Tangents.GetUnsafePtr<Vector3>();
                     UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), tangents, sizeof(float3), sizeof(float3), Positions.Length);
                     offset += sizeof(float3);
+
+                    byte* boneWeights = (byte*)BoneWeights.GetUnsafePtr<Vector4>();
+                    UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), boneWeights, sizeof(float4), sizeof(float4), Positions.Length);
+                    offset += sizeof(float4);
+
+                    byte* boneIndices = (byte*)BoneIndices.GetUnsafePtr<Vector4>();
+                    UnsafeUtility.MemCpyStride(dest + offset, sizeof(LitVertex), boneIndices, sizeof(float4), sizeof(float4), Positions.Length);
+                    offset += sizeof(float4);
                 }
 
                 //Billboard position not present in UnityEngine.Mesh

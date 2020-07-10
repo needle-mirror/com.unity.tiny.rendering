@@ -5,10 +5,48 @@ using Unity.Entities;
 using Unity.Tiny;
 using Unity.Tiny.Assertions;
 using Unity.Tiny.Rendering;
-using Bgfx;
 
 namespace Unity.Tiny.Rendering
 {
+    public enum RenderGraphMode
+    {
+        // The render buffer is fixed to a certain resolution and will blit to the front buffer, preserving aspect. 
+        // If the aspect of the front and render buffer are different, the render buffer is scaled down.
+        // Bars with the color in DisplayInfo.backgroundBorderColor are drawn where there is no rendering
+        FixedRenderBuffer = 1,
+        // The render buffer is fixed to a certain maximum resolution, but maintains the front buffer aspect ratio. 
+        // If the front buffer resolution is larger than the maximum render buffer resolution in either width or height,
+        // the render buffer is scaled up by a uniform factor. 
+        ScaledRenderBuffer = 2,
+        // There is no render buffer, all rendering goes directly to the front buffer. 
+        // There is no blitting or scaling pass. This mode is only correct when Gamma color space is used.
+        DirectToFrontBuffer = 3 
+    }
+
+    // Config singleton, usually found next to DisplayInfo on the config entity
+    // Changing entries here will force a full render graph rebuild 
+    public struct RenderGraphConfig : IComponentData, IEquatable<RenderGraphConfig>
+    {
+        public RenderGraphMode Mode;
+        public int RenderBufferWidth;   // ignored if Mode is DirectToFrontBuffer
+        public int RenderBufferHeight;  // ignored if Mode DirectToFrontBuffer
+        public int RenderBufferMaxSize; // ignored if anything but ScaledRenderBuffer
+
+        public static RenderGraphConfig Default { get; } = new RenderGraphConfig
+        {
+            // default to 1080p fixed
+            RenderBufferWidth = 1920,
+            RenderBufferHeight = 1080,
+            RenderBufferMaxSize = 2048,
+            Mode = RenderGraphMode.FixedRenderBuffer
+        };
+
+        public bool Equals(RenderGraphConfig other)
+        {
+            return Mode == other.Mode && RenderBufferWidth == other.RenderBufferWidth && RenderBufferHeight == other.RenderBufferHeight;
+        }
+    }
+
     public struct RenderNodeRef : IBufferElementData
     {
         public Entity e; // next to a RenderNode, this node depends on those other nodes
@@ -109,16 +147,17 @@ namespace Unity.Tiny.Rendering
     [Flags]
     public enum RenderPassClear : ushort
     {
-        Color = bgfx.ClearFlags.Color,
-        Depth = bgfx.ClearFlags.Depth,
-        Stencil = bgfx.ClearFlags.Stencil
+        Color = 1, //bgfx.ClearFlags.Color,
+        Depth = 2, //bgfx.ClearFlags.Depth,
+        Stencil = 4//bgfx.ClearFlags.Stencil
     }
 
     public enum RenderPassSort: ushort
     {
-        Unsorted = bgfx.ViewMode.Default,
-        SortZLess = bgfx.ViewMode.DepthDescending,
-        Sorted = bgfx.ViewMode.Sequential
+        Unsorted, //bgfx.ViewMode.Default,
+        Sorted, //bgfx.ViewMode.Sequential
+        SortZGreater, //bgfx.ViewMode.DepthDescending,
+        SortZLess //bgfx.ViewMode.DepthDescending,
     }
 
     [Flags]
@@ -180,7 +219,6 @@ namespace Unity.Tiny.Rendering
     }
 
     [UpdateInGroup(typeof(PresentationSystemGroup))]
-    [UpdateAfter(typeof(RendererBGFXSystem))]
     [UpdateAfter(typeof(UpdateCameraMatricesSystem))]
     [UpdateAfter(typeof(UpdateLightMatricesSystem))]
     [UpdateBefore(typeof(SubmitSystemGroup))]
@@ -218,12 +256,21 @@ namespace Unity.Tiny.Rendering
         {
         }
 
+        void ResizeRenderTexture ( Entity eTex, int w, int h )
+        {
+            if ( eTex==Entity.Null || !EntityManager.HasComponent<Image2DRenderToTexture>(eTex) )
+                return;
+            Image2D im = EntityManager.GetComponentData<Image2D>(eTex);
+            if ( im.imagePixelWidth==w && im.imagePixelHeight==h )
+                return;
+            // change tracked on rendering native side 
+            im.imagePixelWidth = w;
+            im.imagePixelHeight = h;
+            EntityManager.SetComponentData<Image2D>(eTex,im);
+        }
+
         protected override void OnUpdate()
         {
-            var bgfxinst = World.GetExistingSystem<RendererBGFXSystem>().InstancePointer();
-            if (!bgfxinst->m_initialized)
-                return;
-
             // make sure passes have viewid, transform, scissor rect and view rect set
 
             // reset alreadyAdded state
@@ -238,6 +285,21 @@ namespace Unity.Tiny.Rendering
             Entities.WithoutBurst().WithAll<RenderNodePrimarySurface>().ForEach((Entity eNode) => { RecAddPasses(eNode, ref nextViewId); }).Run();
 
             var di = World.TinyEnvironment().GetConfigData<DisplayInfo>();
+            
+            Entities.WithoutBurst().WithAll<RenderNode>().ForEach((Entity e, ref RenderNodeAutoScaleToDisplay rnastd, ref RenderNodeTexture tex) => {
+                Assert.IsTrue(EntityManager.HasComponent<MainViewNodeTag>(e));
+                int w, h;
+                RenderGraphBuilder.ComputeAutoScaleSize(di.framebufferWidth, di.framebufferHeight, rnastd.MaxSize, out w, out h);
+                if ( tex.rect.w != w || tex.rect.h != h ) {
+                    // have to resize the backing texture here
+                    ResizeRenderTexture ( tex.colorTexture, w, h);
+                    ResizeRenderTexture ( tex.depthTexture, w, h);
+                    tex.rect.w = (ushort)w;
+                    tex.rect.h = (ushort)h;
+                    rnastd.Resized = true; // needed to signal renderer 
+                    Debug.LogFormat ("Resize render target texture: tex = {0},{1} display = {2},{3}", w, h, di.framebufferWidth, di.framebufferHeight);
+                }
+            }).Run();
 
             Entities.WithoutBurst().WithAll<RenderPassAutoSizeToNode>().ForEach((Entity e, ref RenderPass pass) =>
             {
@@ -272,10 +334,10 @@ namespace Unity.Tiny.Rendering
                     {
                         default:
                         case CameraClearFlags.SolidColor:
-                            pass.clearFlags = RenderPassClear.Color | RenderPassClear.Depth;
+                            pass.clearFlags = RenderPassClear.Color | RenderPassClear.Depth | RenderPassClear.Stencil;
                             break;
                         case CameraClearFlags.DepthOnly:
-                            pass.clearFlags = RenderPassClear.Depth;
+                            pass.clearFlags = RenderPassClear.Depth | RenderPassClear.Stencil;
                             break;
                         case CameraClearFlags.Nothing:
                             pass.clearFlags = 0;
@@ -284,7 +346,7 @@ namespace Unity.Tiny.Rendering
                     float4 cc = cam.backgroundColor.AsFloat4();
                     if (di.colorSpace == ColorSpace.Gamma)
                         cc = Color.LinearToSRGB(cc);
-                    pass.clearRGBA = RendererBGFXStatic.PackColorBGFX(cc);
+                    pass.clearRGBA = Color.PackFloatABGR(cc);
                 }
             }).Run();
 
@@ -292,7 +354,7 @@ namespace Unity.Tiny.Rendering
                 float4 cc = di.backgroundBorderColor.AsFloat4();
                 if (di.colorSpace == ColorSpace.Gamma)
                     cc = Color.LinearToSRGB(cc);
-                pass.clearRGBA = RendererBGFXStatic.PackColorBGFX(cc);
+                pass.clearRGBA = Color.PackFloatABGR(cc);
             }).Run();
 
             // auto update passes that are matched with a cascade
@@ -330,53 +392,6 @@ namespace Unity.Tiny.Rendering
                     m.c0.x = srcAspect / destAspect; m.c1.y = 1.0f;
                 }
                 pass.viewTransform = m;
-            }).Run();
-
-            // set up extra pass data
-            Entities.WithoutBurst().ForEach((Entity e, ref RenderPass pass) =>
-            {
-                if (pass.viewId == 0xffff)
-                {
-                    RenderDebug.LogFormat("Render pass entity {0} on render node entity {1} is not referenced by the render graph. It should be deleted.", e, pass.inNode);
-                    Assert.IsTrue(false);
-                    return;
-                }
-                bool rtt = EntityManager.HasComponent<FramebufferBGFX>(pass.inNode);
-                if (rtt) pass.passFlags = RenderPassFlags.RenderToTexture;
-                else pass.passFlags = 0;
-                // those could be more shared ... (that is, do all passes really need a copy of view & projection?)
-                unsafe { fixed(float4x4* viewp = &pass.viewTransform, projp = &pass.projectionTransform) {
-                    if (bgfxinst->m_homogeneousDepth && bgfxinst->m_originBottomLeft) // gl style
-                    {
-                        bgfx.set_view_transform(pass.viewId, viewp, projp);
-                        pass.passFlags &= ~RenderPassFlags.FlipCulling;
-                    }
-                    else // dx style
-                    {
-                        bool yflip = !bgfxinst->m_originBottomLeft && rtt;
-                        float4x4 adjustedProjection = RendererBGFXStatic.AdjustProjection(ref pass.projectionTransform, !bgfxinst->m_homogeneousDepth, yflip);
-                        bgfx.set_view_transform(pass.viewId, viewp, &adjustedProjection);
-                        if (yflip) pass.passFlags |= RenderPassFlags.FlipCulling;
-                        else  pass.passFlags &= ~RenderPassFlags.FlipCulling;
-                    }
-                    // make a viewProjection
-                    pass.viewProjectionTransform = math.mul(pass.projectionTransform, pass.viewTransform);
-                }}
-                bgfx.set_view_mode(pass.viewId, (bgfx.ViewMode)pass.sorting);
-                bgfx.set_view_rect(pass.viewId, pass.viewport.x, pass.viewport.y, pass.viewport.w, pass.viewport.h);
-                bgfx.set_view_scissor(pass.viewId, pass.scissor.x, pass.scissor.y, pass.scissor.w, pass.scissor.h);
-                bgfx.set_view_clear(pass.viewId, (ushort)pass.clearFlags, pass.clearRGBA, pass.clearDepth, pass.clearStencil);
-                if (rtt)
-                {
-                    var rttbgfx = EntityManager.GetComponentData<FramebufferBGFX>(pass.inNode);
-                    bgfx.set_view_frame_buffer(pass.viewId, rttbgfx.handle);
-                }
-                else
-                {
-                    bgfx.set_view_frame_buffer(pass.viewId, new bgfx.FrameBufferHandle { idx = 0xffff });
-                }
-                // touch it? needed?
-                bgfx.touch(pass.viewId);
             }).Run();
         }
     }

@@ -80,7 +80,7 @@ namespace Unity.Tiny.Rendering
             return phandle;
         }
 
-        public static unsafe bgfx.ProgramHandle GetPrecompiledShaderData(bgfx.RendererType backend, VertexShaderBinData vs_data, FragmentShaderBinData fs_data, ref NativeString32 shaderName)
+        public static unsafe bgfx.ProgramHandle GetPrecompiledShaderData(bgfx.RendererType backend, VertexShaderBinData vs_data, FragmentShaderBinData fs_data, ref FixedString32 shaderName)
         {
             var fsl = fs_data.data.Value.DataForBackend(backend).Length;
             var vsl = vs_data.data.Value.DataForBackend(backend).Length;
@@ -249,6 +249,25 @@ namespace Unity.Tiny.Rendering
         }
     }
 
+    public struct LitSkinnedMeshShader
+    {
+        public LitShader m_litShader;
+        // mesh skinning
+        public bgfx.UniformHandle m_uniformBoneMatrices;
+
+        public void Init(bgfx.ProgramHandle program)
+        {
+            m_litShader.Init(program);
+            m_uniformBoneMatrices = bgfx.create_uniform("u_bone_matrices", bgfx.UniformType.Mat4, 32);
+        }
+
+        public void Destroy()
+        {
+            bgfx.destroy_uniform(m_uniformBoneMatrices);
+            m_litShader.Destroy();
+        }
+    }
+
     public struct SimpleShader
     {
         public bgfx.ProgramHandle m_prog;
@@ -384,6 +403,26 @@ namespace Unity.Tiny.Rendering
             bgfx.destroy_program(m_prog);
             bgfx.destroy_uniform(m_uniformBias);
             bgfx.destroy_uniform(m_uniformDebugColor);
+        }
+    }
+
+    public struct SkinnedMeshShadowMapShader
+    {
+        public ShadowMapShader m_shadowMapShader;
+
+        // mesh skinning
+        public bgfx.UniformHandle m_uniformBoneMatrices;
+
+        public void Init(bgfx.ProgramHandle program)
+        {
+            m_shadowMapShader.Init(program);
+            m_uniformBoneMatrices = bgfx.create_uniform("u_bone_matrices", bgfx.UniformType.Mat4, 32);
+        }
+
+        public void Destroy()
+        {
+            bgfx.destroy_uniform(m_uniformBoneMatrices);
+            m_shadowMapShader.Destroy();
         }
     }
 }

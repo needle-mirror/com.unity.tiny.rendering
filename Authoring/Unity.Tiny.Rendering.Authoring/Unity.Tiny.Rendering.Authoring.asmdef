@@ -7,7 +7,7 @@
         "Unity.Entities.Runtime.Build",
         "Unity.Mathematics",
         "Unity.Mathematics.Extensions",
-        "Unity.Platforms",
+        "Unity.Build.DotsRuntime",
         "Unity.Build",
         "Unity.Tiny.Authoring",
         "Unity.Tiny.Core",

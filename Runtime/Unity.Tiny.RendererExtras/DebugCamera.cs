@@ -1,17 +1,13 @@
 using System;
 using Unity.Mathematics;
 using Unity.Entities;
-using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.Tiny;
 using Unity.Tiny.Utils;
-using Unity.Tiny.Rendering;
 using Unity.Tiny.Input;
 using Bgfx;
 using System.Runtime.InteropServices;
 using Unity.Transforms;
-using Unity.Jobs;
-using Unity.Burst;
+using UnityEngine.Networking.PlayerConnection;
 
 namespace Unity.Tiny.Rendering
 {
@@ -45,6 +41,8 @@ namespace Unity.Tiny.Rendering
     }
 
     // attach next to a Camera
+    [UpdateBefore(typeof(SubmitSystemGroup))]
+    [UpdateAfter(typeof(SimulationSystemGroup))]
     public struct CameraKeyControl : IComponentData
     {
         public float movespeed;
@@ -67,13 +65,47 @@ namespace Unity.Tiny.Rendering
         public KeyCode key;
     }
 
+    public static class SharedCameraSyncInfo
+    {
+        public static readonly Guid syncCameraGuid = new Guid("baa9550975ea4acc9c8389a1cd777276");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CameraSynchronizationMessage
+    {
+        public float3 position;
+        public quaternion rotation;
+        public float fovDegrees;
+    }
+
     public class KeyControlsSystem : SystemBase
     {
         protected int m_nshots;
         public bool m_configAlwaysRun;
         public bool m_notFirst;
+        int m_cfgIndex;
 
 #if !UNITY_EDITOR
+        private RenderGraphConfig GetNextConfig()
+        {
+            m_cfgIndex++;
+            switch (m_cfgIndex) {
+                case 0:
+                    return new RenderGraphConfig { RenderBufferWidth = 640, RenderBufferHeight = 480, Mode = RenderGraphMode.FixedRenderBuffer };
+                case 1:
+                    return new RenderGraphConfig { RenderBufferWidth = 1920 , RenderBufferHeight = 1080, Mode = RenderGraphMode.FixedRenderBuffer };
+                case 2:
+                    return new RenderGraphConfig { RenderBufferMaxSize = 512,  Mode = RenderGraphMode.ScaledRenderBuffer };
+                case 3:
+                    return new RenderGraphConfig { Mode = RenderGraphMode.DirectToFrontBuffer };
+                case 4:
+                default:
+                    m_cfgIndex = -1;
+                    return new RenderGraphConfig { RenderBufferWidth = 1280, RenderBufferHeight = 720, Mode = RenderGraphMode.FixedRenderBuffer };
+                    
+            }
+        }
+
         protected void ControlCamera(Entity ecam)
         {
             // camera controls
@@ -129,7 +161,7 @@ namespace Unity.Tiny.Rendering
                 tPos.Value += rMat.c0 * cc.movespeed * dt;
             if (input.GetKey(KeyCode.PageUp) || input.GetKey(KeyCode.R))
                 cam.fov += cc.fovspeed * dt;
-            if (input.GetKey(KeyCode.PageDown) || input.GetKey(KeyCode.F))
+            if (input.GetKey(KeyCode.PageDown) || input.GetKey(KeyCode.L))
                 cam.fov -= cc.fovspeed * dt;
 
             if (input.GetKey(KeyCode.Return))
@@ -230,6 +262,12 @@ namespace Unity.Tiny.Rendering
                 Debug.LogFormatAlways("VSync is now {0}.", di.disableVSync ? "disabled" : "enabled");
             }
 
+            if (input.GetKeyDown(KeyCode.F5) || (input.GetKeyDown(KeyCode.Alpha5) && anyAlt)) {
+                RenderGraphConfig cfg = GetNextConfig();
+                SetSingleton(cfg);
+                Debug.LogFormatAlways("Target config is now {0}*{1} {2}.", cfg.RenderBufferHeight, cfg.RenderBufferWidth, cfg.Mode==RenderGraphMode.DirectToFrontBuffer?"direct":"buffer" );
+            }
+
             rendererInstance->m_outputDebugSelect = new float4(0, 0, 0, 0);
             if (input.GetKey(KeyCode.Alpha1))
                 rendererInstance->m_outputDebugSelect = new float4(1, 0, 0, 0);
@@ -267,18 +305,49 @@ namespace Unity.Tiny.Rendering
             if (ecam == Entity.Null)
                 return;
 
+            // sync scene camera with game camera position
+            if (input.GetKeyDown(KeyCode.F))
+            {
+                SyncSceneViewToCamera(ref ecam);
+            }
+
             ControlCamera(ecam);
 
-            Entities.WithoutBurst().WithAll<Light>().ForEach((Entity eLight, ref LightFromCameraByKey lk, ref Translation tPos, ref Rotation tRot) =>
-            {
-                if (input.GetKeyDown(lk.key))
+            Entities.WithoutBurst().WithAll<Light>().ForEach(
+                (Entity eLight, ref LightFromCameraByKey lk, ref Translation tPos, ref Rotation tRot) =>
                 {
-                    tPos = EntityManager.GetComponentData<Translation>(ecam);
-                    tRot = EntityManager.GetComponentData<Rotation>(ecam);
-                    Debug.LogFormat("Set light {0} to {1} {2}", eLight, tPos.Value, tRot.Value.value);
-                }
-            }).Run();
+                    if (input.GetKeyDown(lk.key))
+                    {
+                        tPos = EntityManager.GetComponentData<Translation>(ecam);
+                        tRot = EntityManager.GetComponentData<Rotation>(ecam);
+                        Debug.LogFormat("Set light {0} to {1} {2}", eLight, tPos.Value, tRot.Value.value);
+                    }
+                }).Run();
 #endif
+        }
+
+        /**
+         * Sends a message to the editor to sync the scene camera with the provided camera entity.
+         */
+        unsafe void SyncSceneViewToCamera(ref Entity ecam)
+        {
+
+            var camInfo = new CameraSynchronizationMessage
+            {
+                position = EntityManager.GetComponentData<Translation>(ecam).Value,
+                rotation = EntityManager.GetComponentData<Rotation>(ecam).Value,
+                fovDegrees = EntityManager.GetComponentData<Camera>(ecam).fov
+            };
+
+            // copy camera info into byte array
+            byte[] bytes = new byte[sizeof(CameraSynchronizationMessage)];
+            CameraSynchronizationMessage* pLocation = &camInfo;
+            fixed (byte* pOut = bytes)
+            {
+                UnsafeUtility.MemCpy(pOut, pLocation, sizeof(CameraSynchronizationMessage));
+            }
+
+            PlayerConnection.instance.Send(SharedCameraSyncInfo.syncCameraGuid, bytes);
         }
     }
 }

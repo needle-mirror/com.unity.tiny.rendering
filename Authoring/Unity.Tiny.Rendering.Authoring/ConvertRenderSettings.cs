@@ -1,7 +1,11 @@
+using Unity.Build.Common;
+using Unity.Build.DotsRuntime;
 using Unity.Mathematics;
 using UnityEngine;
 using Unity.Entities;
 using Unity.Entities.Runtime.Build;
+using UnityEditor;
+using Hash128 = Unity.Entities.Hash128;
 
 namespace Unity.TinyConversion
 {
@@ -31,10 +35,25 @@ namespace Unity.TinyConversion
     {
         protected override void OnUpdate()
         {
-            //Get render settings from the current active scene
+            if (Settings == null)
+                return;
+
+            if (TryGetBuildConfigurationComponent<DotsRuntimeBuildProfile>(out var profile))
+            {
+                if (profile.UseNewPipeline)
+                {
+                    if (!IsExportingRootScene())
+                        return;
+                }
+            }
+
+            // Get render settings from the current active scene
             Entity e = DstEntityManager.CreateEntity();
 
-            //Ambient light
+            // Render settings should go into the main section of the subscene they are coming from
+            DstEntityManager.AddSharedComponentData(e, new SceneSection(){ SceneGUID = Settings.SceneGUID, Section = 0});
+
+            // Ambient light
             DstEntityManager.AddComponentData<Unity.Tiny.Rendering.Light>(e, new Unity.Tiny.Rendering.Light()
             {
                 color = new float3(RenderSettings.ambientLight.r, RenderSettings.ambientLight.g, RenderSettings.ambientLight.b),
@@ -42,7 +61,7 @@ namespace Unity.TinyConversion
             });
             DstEntityManager.AddComponent<Unity.Tiny.Rendering.AmbientLight>(e);
 
-            //Fog
+            // Fog
             var fogLinear = RenderSettings.fogColor.linear;
             DstEntityManager.AddComponentData<Unity.Tiny.Rendering.Fog>(e, new Unity.Tiny.Rendering.Fog()
             {
@@ -52,6 +71,23 @@ namespace Unity.TinyConversion
                 startDistance = RenderSettings.fogStartDistance,
                 endDistance = RenderSettings.fogEndDistance
             });
+        }
+
+        private bool IsExportingRootScene()
+        {
+            var sceneList = Settings.BuildConfiguration.GetComponent<SceneList>();
+            bool convertingRootScene = false;
+            foreach (var sceneInfo in sceneList.SceneInfos)
+            {
+                var sceneHash = new Hash128(sceneInfo.Scene.assetGUID.ToString());
+                if (sceneHash == Settings.SceneGUID)
+                {
+                    convertingRootScene = true;
+                    break;
+                }
+            }
+
+            return convertingRootScene;
         }
     }
 }

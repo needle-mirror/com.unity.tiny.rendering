@@ -19,6 +19,9 @@ namespace Unity.TinyConversion
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
             {
+                if ((uMeshRenderer.hideFlags & HideFlags.HideAndDontSave) == HideFlags.HideAndDontSave)
+                    return;
+
                 foreach (Material mat in uMeshRenderer.sharedMaterials)
                     DeclareReferencedAsset(mat);
 
@@ -51,7 +54,11 @@ namespace Unity.TinyConversion
         {
             Entities.ForEach((UnityEngine.MeshRenderer uMeshRenderer) =>
             {
+                if ((uMeshRenderer.hideFlags & HideFlags.HideAndDontSave) == HideFlags.HideAndDontSave)
+                    return;
+
                 UnityEngine.Mesh uMesh = uMeshRenderer.gameObject.GetComponent<MeshFilter>().sharedMesh;
+
                 var sharedMaterials = uMeshRenderer.sharedMaterials;
                 var meshEntity = GetPrimaryEntity(uMesh);
 
@@ -77,7 +84,7 @@ namespace Unity.TinyConversion
                             // Remove simple data if it was there, we don't need it
                             DstEntityManager.RemoveComponent<SimpleMeshRenderData>(meshEntity);
                         }
-                        else if (DstEntityManager.HasComponent<SimpleMaterial>(targetMaterial))
+                        else
                         {
                             DstEntityManager.AddComponent<SimpleMeshRenderer>(subMeshRenderer);
 
@@ -124,7 +131,7 @@ namespace Unity.TinyConversion
             return meshRendererEntity;
         }
 
-        static void AddTransformComponent(GameObjectConversionSystem gsys, Entity uMeshRenderer, Entity subMeshRendererEntity)
+        public static void AddTransformComponent(GameObjectConversionSystem gsys, Entity uMeshRenderer, Entity subMeshRendererEntity)
         {
             gsys.DstEntityManager.AddComponentData<Parent>(subMeshRendererEntity, new Parent()
             {

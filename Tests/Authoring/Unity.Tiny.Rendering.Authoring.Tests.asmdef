@@ -11,7 +11,8 @@
         "Unity.Tiny.Rendering.Authoring",
         "Unity.Transforms",
         "Unity.PerformanceTesting",
-        "Unity.Entities.Runtime.Build"
+        "Unity.Entities.Runtime.Build",
+        "Unity.Build.DotsRuntime"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"

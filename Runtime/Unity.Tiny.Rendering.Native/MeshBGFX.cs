@@ -2,6 +2,9 @@ using Unity.Entities;
 using Unity.Tiny.Assertions;
 using Bgfx;
 using System.Runtime.CompilerServices;
+#if ENABLE_DOTSRUNTIME_PROFILER
+using Unity.Development.Profiling;
+#endif
 
 namespace Unity.Tiny.Rendering
 {
@@ -17,6 +20,20 @@ namespace Unity.Tiny.Rendering
         public bool IsDynamic()
         {
             return isDynamic;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool IsValidFor(DynamicMeshData dmd)
+        {
+            if (!IsValid())
+                return false;
+            if (dmd.UseDynamicGPUBuffer != isDynamic)
+                return false;
+            if (dmd.IndexCapacity != maxIndexCount)
+                return false;
+            if (dmd.VertexCapacity != maxVertexCount)
+                return false;
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -71,6 +88,10 @@ namespace Unity.Tiny.Rendering
 
         public static MeshBGFX CreateEmpty()
         {
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(1);
+#endif
+
             return new MeshBGFX
             {
                 indexBufferHandle = 0xffff,
@@ -79,12 +100,22 @@ namespace Unity.Tiny.Rendering
                 vertexCount = 0,
                 maxIndexCount = 0,
                 maxVertexCount = 0,
-                isDynamic = false
+                isDynamic = false,
+                vertexSize = 0,
             };
         }
 
         public void Destroy()
         {
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(-1);
+            long bytesReserved = maxVertexCount * vertexSize + maxIndexCount * sizeof(ushort);
+            ProfilerStats.AccumStats.memMesh.Accumulate(-bytesReserved);
+            ProfilerStats.AccumStats.memReservedGFX.Accumulate(-bytesReserved);
+            long bytesUsed = vertexCount * vertexSize + indexCount * sizeof(ushort);
+            ProfilerStats.AccumStats.memUsedGFX.Accumulate(-bytesUsed);
+#endif
+
             if (!isDynamic)
             {
                 if (indexBufferHandle != 0xffff)
@@ -99,17 +130,19 @@ namespace Unity.Tiny.Rendering
                 if (vertexBufferHandle != 0xffff)
                     bgfx.destroy_dynamic_vertex_buffer(GetDynamicVertexBufferHandle());
             }
-            indexBufferHandle = 0xffff;
-            vertexBufferHandle = 0xffff;
-            indexCount = 0;
-            vertexCount = 0;
-            maxIndexCount = 0;
-            maxVertexCount = 0;
+
+            this = CreateEmpty();
         }
 
         public static unsafe MeshBGFX CreateDynamicMeshLit(RendererBGFXInstance* inst, int maxVertices, int maxIndices)
         {
             Assert.IsTrue(maxVertices <= 0x10000 && maxVertices > 0 && maxIndices > 0 && maxIndices <= 0xf0000);
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(1);
+            long bytes = maxVertices * sizeof(LitVertex) + maxIndices * sizeof(ushort);
+            ProfilerStats.AccumStats.memMesh.Accumulate(bytes);
+            ProfilerStats.AccumStats.memReservedGFX.Accumulate(bytes);
+#endif
             return new MeshBGFX
             {
                 maxVertexCount = maxVertices,
@@ -119,13 +152,20 @@ namespace Unity.Tiny.Rendering
                 vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, &inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 indexBufferHandle = bgfx.create_dynamic_index_buffer((uint)maxIndices, (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_litVertexBufferDeclHandle,
-                isDynamic = true
+                isDynamic = true,
+                vertexSize = sizeof(LitVertex),
             };
         }
 
         public static unsafe MeshBGFX CreateDynamicMeshSimple(RendererBGFXInstance* inst, int maxVertices, int maxIndices)
         {
             Assert.IsTrue(maxVertices <= 0x10000 && maxVertices > 0 && maxIndices > 0 && maxIndices <= 0xf0000);
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(1);
+            long bytes = maxVertices * sizeof(SimpleVertex) + maxIndices * sizeof(ushort);
+            ProfilerStats.AccumStats.memMesh.Accumulate(bytes);
+            ProfilerStats.AccumStats.memReservedGFX.Accumulate(bytes);
+#endif
             return new MeshBGFX
             {
                 maxVertexCount = maxVertices,
@@ -135,12 +175,20 @@ namespace Unity.Tiny.Rendering
                 vertexBufferHandle = bgfx.create_dynamic_vertex_buffer((uint)maxVertices, &inst->m_simpleVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
                 indexBufferHandle = bgfx.create_dynamic_index_buffer((uint)maxIndices, (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_simpleVertexBufferDeclHandle,
-                isDynamic = true
+                isDynamic = true,
+                vertexSize = sizeof(SimpleVertex),
             };
         }
 
         public static unsafe MeshBGFX CreateStaticMesh(RendererBGFXInstance* inst, ushort* indices, int nindices, SimpleVertex* vertices, int nvertices)
         {
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(1);
+            long bytes = nvertices * sizeof(SimpleVertex) + nindices * sizeof(ushort);
+            ProfilerStats.AccumStats.memMesh.Accumulate(bytes);
+            ProfilerStats.AccumStats.memReservedGFX.Accumulate(bytes);
+            ProfilerStats.AccumStats.memUsedGFX.Accumulate(bytes);
+#endif
             return new MeshBGFX
             {
                 indexBufferHandle = bgfx.create_index_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)indices, nindices * 2), (ushort)bgfx.BufferFlags.None).idx,
@@ -150,7 +198,8 @@ namespace Unity.Tiny.Rendering
                 maxIndexCount = nindices,
                 maxVertexCount = nvertices,
                 vertexLayoutHandle = inst->m_simpleVertexBufferDeclHandle,
-                isDynamic = false
+                isDynamic = false,
+                vertexSize = sizeof(SimpleVertex),
             };
         }
 
@@ -166,6 +215,13 @@ namespace Unity.Tiny.Rendering
         public static unsafe MeshBGFX CreateStaticMesh(RendererBGFXInstance* inst, ushort* indices, int nindices, LitVertex* vertices, int nvertices)
         {
             Assert.IsTrue(nindices > 0 && nvertices > 0 && nvertices <= ushort.MaxValue);
+#if ENABLE_DOTSRUNTIME_PROFILER
+            ProfilerStats.AccumStats.memMeshCount.Accumulate(1);
+            long bytes = nvertices * sizeof(LitVertex) + nindices * sizeof(ushort);
+            ProfilerStats.AccumStats.memMesh.Accumulate(bytes);
+            ProfilerStats.AccumStats.memReservedGFX.Accumulate(bytes);
+            ProfilerStats.AccumStats.memUsedGFX.Accumulate(bytes);
+#endif
             return new MeshBGFX
             {
                 indexCount = nindices,
@@ -175,7 +231,8 @@ namespace Unity.Tiny.Rendering
                 indexBufferHandle = bgfx.create_index_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)indices, nindices * 2), (ushort)bgfx.BufferFlags.None).idx,
                 vertexLayoutHandle = inst->m_litVertexBufferDeclHandle,
                 vertexBufferHandle = bgfx.create_vertex_buffer(RendererBGFXStatic.CreateMemoryBlock((byte*)vertices, nvertices * sizeof(LitVertex)), &inst->m_litVertexBufferDecl, (ushort)bgfx.BufferFlags.None).idx,
-                isDynamic = false
+                isDynamic = false,
+                vertexSize = sizeof(LitVertex),
             };
         }
 
@@ -193,11 +250,22 @@ namespace Unity.Tiny.Rendering
             Assert.IsTrue(isDynamic);
             Assert.IsTrue(numVertices <= maxVertexCount);
             Assert.IsTrue(numIndices <= maxIndexCount);
+#if ENABLE_DOTSRUNTIME_PROFILER
+            Assert.IsTrue(vertexSize == sizeofVertex);
+            ProfilerStats.AccumStats.memUsedGFX.Accumulate(-(vertexCount * vertexSize + indexCount * sizeof(ushort)));
+            ProfilerStats.AccumStats.memUsedGFX.Accumulate(numVertices * vertexSize + numIndices * sizeof(ushort));
+#endif
             bgfx.update_dynamic_index_buffer(GetDynamicIndexBufferHandle(), 0, RendererBGFXStatic.CreateMemoryBlock((byte*)indexSrc, numIndices * 2));
             indexCount = numIndices;
             bgfx.update_dynamic_vertex_buffer(GetDynamicVertexBufferHandle(), 0, RendererBGFXStatic.CreateMemoryBlock(vertexSrc, numVertices * sizeofVertex));
             vertexCount = numVertices;
         }
+
+        public int IndexCapacity => maxIndexCount;
+        public int VertexCapacity => maxVertexCount;
+
+        public int IndexCount => indexCount;
+        public int VertexCount => vertexCount;
 
         private ushort indexBufferHandle;
         private ushort vertexBufferHandle;
@@ -207,5 +275,6 @@ namespace Unity.Tiny.Rendering
         private int maxVertexCount;
         private bgfx.VertexLayoutHandle vertexLayoutHandle;
         private bool isDynamic;
+        private int vertexSize;  // For tracking memory usage
     }
 }

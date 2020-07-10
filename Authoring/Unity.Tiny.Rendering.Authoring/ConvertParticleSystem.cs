@@ -38,35 +38,31 @@ namespace Unity.TinyConversion
             {
                 var eParticleSystem = GetPrimaryEntity(uParticleSystem);
                 AddTransforms(ref uParticleSystem, eParticleSystem);
-                Entity eParticle = DstEntityManager.CreateEntity();
-                DstEntityManager.AddComponentData<LocalToWorld>(eParticle, new LocalToWorld { Value = float4x4.identity });
-                DstEntityManager.AddComponentData<WorldBounds>(eParticle, new WorldBounds());
 
                 // General settings
                 ParticleEmitter particleEmitter = new ParticleEmitter
                 {
-                    particle = eParticle,
-                    duration = uParticleSystem.main.duration,
-                    maxParticles = (uint)uParticleSystem.main.maxParticles,
-                    lifetime = ConvertMinMaxCurve(uParticleSystem.main.startLifetime),
-                    attachToEmitter = uParticleSystem.main.simulationSpace == ParticleSystemSimulationSpace.Local,
+                    Duration = uParticleSystem.main.duration,
+                    MaxParticles = (uint)uParticleSystem.main.maxParticles,
+                    Lifetime = ConvertMinMaxCurve(uParticleSystem.main.startLifetime),
+                    AttachToEmitter = uParticleSystem.main.simulationSpace == ParticleSystemSimulationSpace.Local,
                 };
 
-                DstEntityManager.AddComponentData(eParticleSystem, new EmitterInitialSpeed { speed = ConvertMinMaxCurve(uParticleSystem.main.startSpeed) });
+                DstEntityManager.AddComponentData(eParticleSystem, new EmitterInitialSpeed { Speed = ConvertMinMaxCurve(uParticleSystem.main.startSpeed) });
 
                 if (uParticleSystem.main.loop)
                     DstEntityManager.AddComponentData(eParticleSystem, new Looping());
 
-                DstEntityManager.AddComponentData(eParticleSystem, new StartDelay { delay = ConvertMinMaxCurve(uParticleSystem.main.startDelay) });
+                DstEntityManager.AddComponentData(eParticleSystem, new StartDelay { Delay = ConvertMinMaxCurve(uParticleSystem.main.startDelay) });
                 DstEntityManager.AddComponentData(eParticleSystem, ConvertMinMaxGradient(uParticleSystem.main.startColor));
 
                 if (!uParticleSystem.useAutoRandomSeed)
-                    DstEntityManager.AddComponentData(eParticleSystem, new RandomSeed { seed = uParticleSystem.randomSeed });
+                    DstEntityManager.AddComponentData(eParticleSystem, new RandomSeed { Value = uParticleSystem.randomSeed });
 
                 // Emission settings
                 if (uParticleSystem.emission.enabled)
                 {
-                    particleEmitter.emitRate = ConvertMinMaxCurve(uParticleSystem.emission.rateOverTime);
+                    particleEmitter.EmitRate = ConvertMinMaxCurve(uParticleSystem.emission.rateOverTime);
 
                     if (uParticleSystem.emission.burstCount > 0)
                     {
@@ -78,9 +74,9 @@ namespace Unity.TinyConversion
                         {
                             DstEntityManager.AddComponentData<BurstEmission>(eParticleSystem, new BurstEmission
                             {
-                                count = ConvertMinMaxCurve(burst.count),
-                                interval = burst.repeatInterval,
-                                cycles = burst.cycleCount
+                                Count = ConvertMinMaxCurve(burst.count),
+                                Interval = burst.repeatInterval,
+                                Cycles = burst.cycleCount
                                     // TODO probability
                                     // TODO time
                             });
@@ -97,12 +93,10 @@ namespace Unity.TinyConversion
 
                 // Renderer settings
                 ParticleSystemRenderer uParticleSystemRenderer = uParticleSystem.gameObject.GetComponent<ParticleSystemRenderer>();
-                DstEntityManager.AddComponentData(eParticleSystem, new ParticleMaterial { material = GetPrimaryEntity(uParticleSystemRenderer.sharedMaterial) });
+                DstEntityManager.AddComponentData(eParticleSystem, new ParticleMaterial { Material = GetPrimaryEntity(uParticleSystemRenderer.sharedMaterial) });
 
-                if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Billboard)
-                    DstEntityManager.AddComponentData<Billboarded>(eParticleSystem, new Billboarded());
-                else if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh)
-                    DstEntityManager.AddComponentData(eParticleSystem, new ParticleMesh { mesh = GetPrimaryEntity(uParticleSystemRenderer.mesh) });
+                if (uParticleSystemRenderer.renderMode == ParticleSystemRenderMode.Mesh)
+                    DstEntityManager.AddComponentData(eParticleSystem, new ParticleMesh { Mesh = GetPrimaryEntity(uParticleSystemRenderer.mesh) });
             });
         }
 
@@ -123,16 +117,16 @@ namespace Unity.TinyConversion
             {
                 DstEntityManager.AddComponentData<EmitterInitialNonUniformRotation>(eParticleSystem, new EmitterInitialNonUniformRotation
                 {
-                    angleX = ConvertMinMaxCurve(uParticleSystem.main.startRotationX),
-                    angleY = ConvertMinMaxCurve(uParticleSystem.main.startRotationY),
-                    angleZ = ConvertMinMaxCurve(uParticleSystem.main.startRotationZ)
+                    AngleX = ConvertMinMaxCurve(uParticleSystem.main.startRotationX),
+                    AngleY = ConvertMinMaxCurve(uParticleSystem.main.startRotationY),
+                    AngleZ = ConvertMinMaxCurve(uParticleSystem.main.startRotationZ)
                 });
             }
             else
             {
                 DstEntityManager.AddComponentData<EmitterInitialRotation>(eParticleSystem, new EmitterInitialRotation
                 {
-                    angle = ConvertMinMaxCurve(uParticleSystem.main.startRotation)
+                    Angle = ConvertMinMaxCurve(uParticleSystem.main.startRotation)
                 });
             }
 
@@ -141,16 +135,16 @@ namespace Unity.TinyConversion
             {
                 DstEntityManager.AddComponentData<EmitterInitialNonUniformScale>(eParticleSystem, new EmitterInitialNonUniformScale
                 {
-                    scaleX = ConvertMinMaxCurve(uParticleSystem.main.startSizeX),
-                    scaleY = ConvertMinMaxCurve(uParticleSystem.main.startSizeY),
-                    scaleZ = ConvertMinMaxCurve(uParticleSystem.main.startSizeZ)
+                    ScaleX = ConvertMinMaxCurve(uParticleSystem.main.startSizeX),
+                    ScaleY = ConvertMinMaxCurve(uParticleSystem.main.startSizeY),
+                    ScaleZ = ConvertMinMaxCurve(uParticleSystem.main.startSizeZ)
                 });
             }
             else
             {
                 DstEntityManager.AddComponentData<EmitterInitialScale>(eParticleSystem, new EmitterInitialScale
                 {
-                    scale = ConvertMinMaxCurve(uParticleSystem.main.startSize)
+                    Scale = ConvertMinMaxCurve(uParticleSystem.main.startSize)
                 });
             }
         }
@@ -165,14 +159,14 @@ namespace Unity.TinyConversion
                 case ParticleSystemShapeType.Cone:
                     DstEntityManager.AddComponentData(eParticleSystem, new EmitterConeSource
                     {
-                        radius = uParticleSystem.shape.radius,
-                        angle = uParticleSystem.shape.angle
+                        Radius = uParticleSystem.shape.radius,
+                        Angle = uParticleSystem.shape.angle
                     });
                     break;
                 case ParticleSystemShapeType.Circle:
                     DstEntityManager.AddComponentData(eParticleSystem, new EmitterCircleSource
                     {
-                        radius = uParticleSystem.shape.radius
+                        Radius = uParticleSystem.shape.radius
                     });
                     break;
                 case ParticleSystemShapeType.Rectangle:
@@ -181,13 +175,13 @@ namespace Unity.TinyConversion
                 case ParticleSystemShapeType.Sphere:
                     DstEntityManager.AddComponentData(eParticleSystem, new EmitterSphereSource
                     {
-                        radius = uParticleSystem.shape.radius
+                        Radius = uParticleSystem.shape.radius
                     });
                     break;
                 case ParticleSystemShapeType.Hemisphere:
                     DstEntityManager.AddComponentData(eParticleSystem, new EmitterHemisphereSource
                     {
-                        radius = uParticleSystem.shape.radius
+                        Radius = uParticleSystem.shape.radius
                     });
                     break;
                 default:
@@ -202,9 +196,9 @@ namespace Unity.TinyConversion
             switch (curve.mode)
             {
                 case ParticleSystemCurveMode.Constant:
-                    return new Range { start = curve.constant, end = curve.constant };
+                    return new Range { Start = curve.constant, End = curve.constant };
                 case ParticleSystemCurveMode.TwoConstants:
-                    return new Range { start = curve.constantMin, end = curve.constantMax };
+                    return new Range { Start = curve.constantMin, End = curve.constantMax };
                 case ParticleSystemCurveMode.Curve:
                 case ParticleSystemCurveMode.TwoCurves:
                     UnityEngine.Debug.LogWarning("ParticleSystemCurveMode " + nameof(curve.mode) + " not supported.");
@@ -222,13 +216,13 @@ namespace Unity.TinyConversion
                 case ParticleSystemGradientMode.Color:
                 {
                     float4 color = new float4(gradient.color.r, gradient.color.g, gradient.color.b, gradient.color.a);
-                    return new InitialColor { colorMin = color, colorMax = color };
+                    return new InitialColor { ColorMin = color, ColorMax = color };
                 }
                 case ParticleSystemGradientMode.TwoColors:
                     return new InitialColor
                     {
-                        colorMin = new float4(gradient.colorMin.r, gradient.colorMin.g, gradient.colorMin.b, gradient.colorMin.a),
-                        colorMax = new float4(gradient.colorMax.r, gradient.colorMax.g, gradient.colorMax.b, gradient.colorMax.a)
+                        ColorMin = new float4(gradient.colorMin.r, gradient.colorMin.g, gradient.colorMin.b, gradient.colorMin.a),
+                        ColorMax = new float4(gradient.colorMax.r, gradient.colorMax.g, gradient.colorMax.b, gradient.colorMax.a)
                     };
                 case ParticleSystemGradientMode.Gradient:
                 case ParticleSystemGradientMode.TwoGradients:
@@ -236,7 +230,7 @@ namespace Unity.TinyConversion
                 {
                     UnityEngine.Debug.LogWarning("ParticleSystemGradientMode " + nameof(gradient.mode) + " not supported.");
                     float4 defaultColor = new float4(1);
-                    return new InitialColor { colorMin = defaultColor, colorMax = defaultColor };
+                    return new InitialColor { ColorMin = defaultColor, ColorMax = defaultColor };
                 }
 
                 default:

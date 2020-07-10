@@ -18,6 +18,12 @@ namespace Unity.Tiny.Rendering
         public short Order;
     }
 
+    // tag to only disable rendering this camera or renderer
+    // this can be useful for still running transforms but not rendering it
+    public struct DisableRendering : IComponentData
+    {
+    }
+
     /// <summary>
     ///  List of options for clearing a camera's viewport before rendering.
     ///  Used by the Camera2D component.
@@ -31,8 +37,8 @@ namespace Unity.Tiny.Rendering
         Nothing,
 
         /// <summary>
-        ///  Only clear the depth buffer
-        ///  This is useuful for some multi layer effects, where one camera renders
+        ///  Only clear the depth and stencil buffers
+        ///  This is useful for some multi layer effects, where one camera renders
         ///  with its own depth range, and the a second camera renders at a closer depth range
         /// </summary>
         DepthOnly,
@@ -71,8 +77,9 @@ namespace Unity.Tiny.Rendering
     }
 
     // tag camera to auto update aspect to primary display
-    public struct CameraAutoAspectFromDisplay : IComponentData // next to camera
+    public struct CameraAutoAspectFromNode : IComponentData // next to a camera
     {
+        public Entity Node; // if this is Entity.Null, take aspect ratio from display, otherwise from RenderNode entity pointed by here 
     }
 
     public struct CameraMatrices : IComponentData
@@ -344,9 +351,19 @@ namespace Unity.Tiny.Rendering
         {
             TinyEnvironment env = World.TinyEnvironment();
             DisplayInfo di = env.GetConfigData<DisplayInfo>();
-            Entities.WithAll<CameraAutoAspectFromDisplay>().ForEach((ref Camera c) =>
+            float dispAspect = (float)di.width / (float)di.height;
+            Entities.WithoutBurst().ForEach((ref Camera c, ref CameraAutoAspectFromNode from) =>
             {
-                c.aspect = (float)di.width / (float)di.height;
+                c.aspect = dispAspect;
+                if ( from.Node != Entity.Null ) {
+                    Assert.IsTrue(EntityManager.HasComponent<RenderNode>(from.Node));
+                    if ( EntityManager.HasComponent<RenderNodePrimarySurface>(from.Node) ) { 
+                        c.aspect = dispAspect;
+                    } else if ( EntityManager.HasComponent<RenderNodeTexture>(from.Node) ) { 
+                        var rtt = EntityManager.GetComponentData<RenderNodeTexture>(from.Node);
+                        c.aspect = (float)rtt.rect.w / (float)rtt.rect.h;
+                    }
+                }
             }).Run();
 
             // add camera matrices if needed

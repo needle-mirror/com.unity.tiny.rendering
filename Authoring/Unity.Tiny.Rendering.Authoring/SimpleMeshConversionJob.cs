@@ -17,6 +17,8 @@ namespace Unity.TinyConversion
         [DeallocateOnJobCompletion] public NativeArray<Vector3> Positions;
         [DeallocateOnJobCompletion] public NativeArray<Vector2> UVs;
         [DeallocateOnJobCompletion] public NativeArray<ushort> Indices;
+        [DeallocateOnJobCompletion] public NativeArray<Vector4> BoneWeights;
+        [DeallocateOnJobCompletion] public NativeArray<Vector4> BoneIndices;
 
         public SimpleMeshConversionJob(UMeshSettings settings, UMeshDataCache data, NativeArray<BlobAssetReference<SimpleMeshData>> blob)
         {
@@ -24,6 +26,8 @@ namespace Unity.TinyConversion
             Positions = data.uPositions;
             UVs = data.uUVs;
             Indices = data.uIndices;
+            BoneWeights = data.uBoneWeights;
+            BoneIndices = data.uBoneIndices;
             BlobAssets = blob;
         }
 

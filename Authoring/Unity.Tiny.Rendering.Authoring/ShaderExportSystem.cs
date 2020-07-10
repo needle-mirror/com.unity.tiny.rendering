@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Entities.Runtime.Build;
-using Unity.Platforms;
+using Unity.Build.DotsRuntime;
 using Unity.Tiny.Rendering;
 using UnityEngine;
 
@@ -40,11 +40,16 @@ namespace Unity.TinyConversion
             }
         }
 
-        protected bgfx.RendererType[] GetShaderFormat(BuildTarget target)
+        protected bgfx.RendererType[] GetShaderFormat(BuildTarget target, bool forceIncludeAllPlatform = false)
         {
+            // TODO: provide more customized options
+            if (forceIncludeAllPlatform)
+            {
+                return new bgfx.RendererType[] { bgfx.RendererType.Metal, bgfx.RendererType.OpenGL, bgfx.RendererType.OpenGLES, bgfx.RendererType.Vulkan};
+            }
+
             // TODO we need to move ths logic into the platforms packages; they should ultimately determine what shader types are needed
             var targetName = target.UnityPlatformName;
-
             // these are shader types, even though we reuse the renderer type enum.  d3d12 uses d3d11 shaders.
             if (targetName == UnityEditor.BuildTarget.StandaloneWindows.ToString() ||
                 targetName == UnityEditor.BuildTarget.StandaloneWindows64.ToString())

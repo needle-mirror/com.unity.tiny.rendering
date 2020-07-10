@@ -4,9 +4,44 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2020-07-10
+
+### Added
+
+* Stats collection for rendering
+
+### Changed
+
+* Updated minimum Unity Editor version to 2020.1.0b15 (40d9420e7de8)
+
+### Deprecated
+
+
+### Removed
+
+
+### Fixed
+
+
+### Security
+
+
+
+
+## [0.27.0] - 2020-05-27
+
+
+### Changed
+* Updated minimum Unity Editor version to 2020.1.0b9 (9c0aec301c8d)
+
+### Fixed
+* Changing DynamicMeshData capacity will cause the underlying buffers to get recreated properly.
+
 ## [0.26.0] - 2020-05-15
+
+### Changed
+
 * Update package dependencies
-* Updated minimum Unity Editor version to 2019.3.12f1 (84b23722532d)
 
 ## [0.25.0] - 2020-04-30
 * Update package dependencies

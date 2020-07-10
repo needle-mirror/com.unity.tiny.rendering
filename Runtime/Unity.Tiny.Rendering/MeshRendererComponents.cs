@@ -28,6 +28,20 @@ namespace Unity.Tiny.Rendering
     {
     }
 
+    /// <summary>
+    /// Component next to a MeshRenderer, indicating it renders unlit particles
+    /// </summary>
+    public struct SimpleParticleRenderer : IComponentData
+    {
+    }
+
+    /// <summary>
+    /// Component next to a MeshRenderer, indicating it renders lit particles
+    /// </summary>
+    public struct LitParticleRenderer : IComponentData
+    {
+    }
+
     public struct BlitRenderer : IComponentData
     {
         public Entity texture;

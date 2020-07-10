@@ -25,6 +25,8 @@ namespace Unity.Tiny.Rendering
         public float2 TexCoord0;
         public float3 Normal;
         public float3 Tangent;          // TODO: float4 w is bitangent sign
+        public float4 BoneWeight;
+        public float4 BoneIndex;
         public float3 BillboardPos;
         public float4 Albedo_Opacity;   // TODO: 8/16 bit packed
         public float2 Metal_Smoothness; // TODO: 8/16 bit packed
@@ -99,5 +101,28 @@ namespace Unity.Tiny.Rendering
     public struct DynamicSimpleVertex : IBufferElementData
     {
         public SimpleVertex Value;
+    }
+
+    //for cpu skinning and blend shape use
+    public struct OriginalVertex : IBufferElementData
+    {
+        public float3 Position;
+        public float3 Normal;
+        public float3 Tangent;
+    }
+
+    public struct NeedGenerateGPUSkinnedMeshRenderer : IComponentData
+    {
+
+    }
+
+    public struct GPUSkinnedMeshDrawRange : IBufferElementData
+    {
+        public int TriangleIndex;
+    }
+
+    public struct OriginalVertexBoneIndex : IBufferElementData
+    {
+        public float4 BoneIndex;
     }
 }

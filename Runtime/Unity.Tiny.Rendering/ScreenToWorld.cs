@@ -78,8 +78,7 @@ namespace Unity.Tiny.Rendering
         public float2 AdjustInputPositionToPixels(float2 inputPos)
         {
             var di = GetSingleton<DisplayInfo>();
-            var dpiScale = di.screenDpiScale > 0 ? di.screenDpiScale : 1;
-            return inputPos/dpiScale * new float2(di.framebufferWidth / (float) di.width, di.framebufferHeight / (float) di.height);
+            return inputPos * new float2(di.framebufferWidth / (float) di.width, di.framebufferHeight / (float) di.height);
         }
 
         protected void FindPickRoot(out Entity eOutPickRoot, out Entity eOutPass, ScreenToWorldId id)
@@ -138,8 +137,10 @@ namespace Unity.Tiny.Rendering
             float2 pp = InverseViewPortTransform(screenPos, pass);
             float4 pp2 = InversePassTransform(new float4(pp, normalizedZ, 1), pass);
             // now apply transform for all passes in list as well, if there is one
-            if (!EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot))
+            if (!EntityManager.HasComponent<ScreenToWorldPassList>(ePickRoot)) {
+                pp2 *= 1.0f / pp2.w; // homogenize, as we drop w here, we need to turn it into w=1
                 return pp2.xyz;
+            }
             var l = EntityManager.GetBuffer<ScreenToWorldPassList>(ePickRoot);
             for (int i = 0; i < l.Length; i++)
             {
@@ -211,7 +212,7 @@ namespace Unity.Tiny.Rendering
         public void ScreenSpaceToWorldSpaceRay(float2 screenPos, out float3 origin, out float3 direction, ScreenToWorldId id = ScreenToWorldId.MainCamera)
         {
             origin = ScreenSpaceToWorldSpace(screenPos, 0, id);
-            direction = ScreenSpaceToWorldSpace(screenPos, -1, id) - origin;
+            direction = ScreenSpaceToWorldSpace(screenPos, 1, id) - origin;
             direction = math.normalizesafe(direction);
         }
 
@@ -242,7 +243,7 @@ namespace Unity.Tiny.Rendering
         protected override void OnUpdate()
         {
             // TODO: if the transforms ever become a speed issue, we can cache
-            //       the whole pipeline as premultiplies matrices here
+            //       the whole pipeline as premultiplied matrices here
         }
     }
 }

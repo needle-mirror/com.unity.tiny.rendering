@@ -8,7 +8,8 @@ using Unity.Mathematics;
 using UnityEditor;
 using Unity.Build;
 using System.Collections.Generic;
-using Unity.Entities.Runtime.Build;
+using Unity.Build.DotsRuntime;
+using Unity.Build.Common;
 using Unity.PerformanceTesting;
 using MeshRenderer = Unity.Tiny.Rendering.MeshRenderer;
 
@@ -33,6 +34,7 @@ namespace Unity.Tiny.Authoring.Tests
 
             settings = GameObjectConversionSettings.FromWorld(world, blobAssetStore);
             settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
+            settings.BuildConfiguration.SetComponent(new SceneList());
         }
 
         [TearDown]
@@ -43,7 +45,7 @@ namespace Unity.Tiny.Authoring.Tests
                 blobAssetStore.Dispose();
             if (world != null)
                 world.Dispose();
-            entityManager = null;
+            entityManager = default;
         }
 
         GameObject InitGameObjectQuad(string shaderName, int vertexCount)

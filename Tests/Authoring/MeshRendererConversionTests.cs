@@ -7,8 +7,9 @@ using Unity.Build;
 using UnityEngine;
 using Unity.Tiny.Rendering;
 using System.Collections.Generic;
+using Unity.Build.DotsRuntime;
+using Unity.Build.Common;
 using Unity.Collections;
-using Unity.Entities.Runtime.Build;
 
 namespace Unity.Tiny.Authoring.Tests
 {
@@ -29,6 +30,7 @@ namespace Unity.Tiny.Authoring.Tests
 
             settings = GameObjectConversionSettings.FromWorld(world, new BlobAssetStore());
             settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
+            settings.BuildConfiguration.SetComponent(new SceneList());
         }
 
         [TearDown]

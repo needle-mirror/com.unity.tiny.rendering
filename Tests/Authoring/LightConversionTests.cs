@@ -4,7 +4,8 @@ using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEditor;
 using Unity.Build;
-using Unity.Entities.Runtime.Build;
+using Unity.Build.DotsRuntime;
+using Unity.Build.Common;
 using UnityEngine;
 using Unity.Tiny.Rendering;
 
@@ -28,6 +29,7 @@ namespace Unity.Tiny.Authoring.Tests
 
             settings = GameObjectConversionSettings.FromWorld(world, new BlobAssetStore());
             settings.BuildConfiguration = BuildConfiguration.CreateInstance(c => c.SetComponent(new DotsRuntimeBuildProfile ()));
+            settings.BuildConfiguration.SetComponent(new SceneList());
 
             camera = new GameObject();
             camera.AddComponent<UnityEngine.Camera>();
@@ -39,7 +41,7 @@ namespace Unity.Tiny.Authoring.Tests
             EditorSceneManager.CloseScene(scene, true);
             if (world != null)
                 world.Dispose();
-            entityManager = null;
+            entityManager = default;
 
             if (settings != null)
                 settings.BlobAssetStore.Dispose();

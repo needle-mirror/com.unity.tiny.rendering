@@ -8,20 +8,12 @@ using Unity.Tiny;
 using Unity.Tiny.Assertions;
 using Unity.Tiny.Rendering;
 using Unity.Transforms;
-using Bgfx;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs.LowLevel.Unsafe;
-using Unity.Tiny.Scenes;
 
 namespace Unity.Tiny.Rendering
 {
-    // This system creates a "default" render graph
-    // it is intended for debugging / quick setup only!
-    // Graphs should be built at export time!
-    // Initialzing the render graph at runtime init will move a
-    // ton of archetypes around and will not scale!
-
     // various tags that are used as hints to the builder
 
     public struct CameraMask : IComponentData
@@ -38,6 +30,13 @@ namespace Unity.Tiny.Rendering
         public ulong mask;
     }
 
+    // component added to the main view texture node if it is auto scaling with the display window
+    struct RenderNodeAutoScaleToDisplay : IComponentData
+    {
+        public int MaxSize;
+        public bool Resized;
+    }
+
     public struct MainViewNodeTag : IComponentData
     {
         // tag main view node for auto building
@@ -45,6 +44,7 @@ namespace Unity.Tiny.Rendering
 
     // SpriteRenderer is a bit different, as it needs to batch and strict sort
     // need to buffer up entities once
+    // TODO: this needs to move out and into 2D land
     public struct SortSpritesEntry : IBufferElementData, IComparable<SortSpritesEntry>
     {
         // do not put extra stuff in here, it's shuffled around during sorting
@@ -79,12 +79,11 @@ namespace Unity.Tiny.Rendering
         public Entity CreateFrontBufferRenderNode(int w, int h)
         {
             Entity eNode = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(eNode, new RenderNode {});
-            EntityManager.AddComponentData(eNode, new RenderNodePrimarySurface {});
+            EntityManager.AddComponentData(eNode, new RenderNode { });
+            EntityManager.AddComponentData(eNode, new RenderNodePrimarySurface { });
 
             Entity ePassBlit = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassBlit, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassBlit, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Unsorted,
                 projectionTransform = float4x4.identity,
@@ -102,8 +101,7 @@ namespace Unity.Tiny.Rendering
             EntityManager.AddComponent<RenderPassClearColorFromBorder>(ePassBlit);
 
             Entity ePassDebug = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassDebug, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassDebug, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Sorted,
                 projectionTransform = float4x4.identity,
@@ -130,8 +128,7 @@ namespace Unity.Tiny.Rendering
         {
             EntityManager.AddComponent<RenderPassAutoSizeToNode>(ePass);
             EntityManager.AddComponentData<CameraMask>(ePass, cameraMask);
-            EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCamera
-            {
+            EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCamera {
                 camera = eCam,
                 updateClear = updateClear
             });
@@ -145,8 +142,7 @@ namespace Unity.Tiny.Rendering
                 cameraMask = EntityManager.GetComponentData<CameraMask>(eCam);
 
             Entity ePassClear = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassClear, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassClear, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Unsorted,
                 projectionTransform = float4x4.identity,
@@ -163,8 +159,7 @@ namespace Unity.Tiny.Rendering
             SetPassComponents(ePassClear, cameraMask, eCam, true);
 
             Entity ePassOpaque = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassOpaque, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassOpaque, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Unsorted,
                 projectionTransform = float4x4.identity,
@@ -180,8 +175,7 @@ namespace Unity.Tiny.Rendering
             SetPassComponents(ePassOpaque, cameraMask, eCam);
 
             Entity ePassTransparent = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassTransparent, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassTransparent, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.SortZLess,
                 projectionTransform = float4x4.identity,
@@ -197,10 +191,9 @@ namespace Unity.Tiny.Rendering
             SetPassComponents(ePassTransparent, cameraMask, eCam);
 
             Entity ePassSprites = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassSprites, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassSprites, new RenderPass {
                 inNode = eNode,
-                sorting = RenderPassSort.Sorted,
+                sorting = RenderPassSort.SortZGreater,
                 projectionTransform = float4x4.identity,
                 viewTransform = float4x4.identity,
                 passType = RenderPassType.Sprites,
@@ -215,8 +208,7 @@ namespace Unity.Tiny.Rendering
             EntityManager.AddBuffer<SortSpritesEntry>(ePassSprites);
 
             Entity ePassUI = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(ePassUI, new RenderPass
-            {
+            EntityManager.AddComponentData(ePassUI, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Sorted,
                 projectionTransform = float4x4.identity,
@@ -245,8 +237,7 @@ namespace Unity.Tiny.Rendering
         {
             Entity eTexDepth = EntityManager.CreateEntity();
             EntityManager.AddComponentData(eTexDepth, new Image2DRenderToTexture { format = RenderToTextureFormat.ShadowMap });
-            EntityManager.AddComponentData(eTexDepth, new Image2D
-            {
+            EntityManager.AddComponentData(eTexDepth, new Image2D {
                 imagePixelWidth = size,
                 imagePixelHeight = size,
                 status = ImageStatus.Loaded,
@@ -259,8 +250,7 @@ namespace Unity.Tiny.Rendering
             // for now, this workaround does the job altough we are wasting a bunch of memory
             eTexColor = EntityManager.CreateEntity();
             EntityManager.AddComponentData(eTexColor, new Image2DRenderToTexture { format = RenderToTextureFormat.RGBA });
-            EntityManager.AddComponentData(eTexColor, new Image2D
-            {
+            EntityManager.AddComponentData(eTexColor, new Image2D {
                 imagePixelWidth = size,
                 imagePixelHeight = size,
                 status = ImageStatus.Loaded,
@@ -275,8 +265,7 @@ namespace Unity.Tiny.Rendering
             });
 #endif
 #endif
-            EntityManager.AddComponentData(eNode, new RenderNodeTexture
-            {
+            EntityManager.AddComponentData(eNode, new RenderNodeTexture {
                 colorTexture = eTexColor,
                 depthTexture = eTexDepth,
                 rect = new RenderPassRect { x = 0, y = 0, w = (ushort)size, h = (ushort)size }
@@ -285,7 +274,9 @@ namespace Unity.Tiny.Rendering
 
         public void AddRenderToTextureForNode(Entity eNode, int w, int h, bool color, bool depth)
         {
+            Assert.IsTrue(eNode != Entity.Null && w > 0 && h > 0);
             Entity eTex = Entity.Null;
+#if UNITY_DOTSRUNTIME
             if (color)
             {
                 var di = GetSingleton<DisplayInfo>();
@@ -300,23 +291,21 @@ namespace Unity.Tiny.Rendering
                     imagePixelHeight = h,
                     status = ImageStatus.Loaded,
                     flags = tf
-                });;
+                });
             }
+#endif
             Entity eTexDepth = Entity.Null;
-            if (depth)
-            {
+            if (depth) {
                 eTexDepth = EntityManager.CreateEntity();
-                EntityManager.AddComponentData(eTexDepth, new Image2DRenderToTexture { format = RenderToTextureFormat.Depth });
-                EntityManager.AddComponentData(eTexDepth, new Image2D
-                {
+                EntityManager.AddComponentData(eTexDepth, new Image2DRenderToTexture { format = RenderToTextureFormat.DepthStencil });
+                EntityManager.AddComponentData(eTexDepth, new Image2D {
                     imagePixelWidth = w,
                     imagePixelHeight = h,
                     status = ImageStatus.Loaded,
-                    flags =  TextureFlags.Linear | TextureFlags.UVClamp
+                    flags = TextureFlags.Linear | TextureFlags.UVClamp
                 });
             }
-            EntityManager.AddComponentData(eNode, new RenderNodeTexture
-            {
+            EntityManager.AddComponentData(eNode, new RenderNodeTexture {
                 colorTexture = eTex,
                 depthTexture = eTexDepth,
                 rect = new RenderPassRect { x = 0, y = 0, w = (ushort)w, h = (ushort)h }
@@ -326,13 +315,10 @@ namespace Unity.Tiny.Rendering
         public Entity CreateRenderNodeFromCamera(Entity eCam, int w, int h, bool primary)
         {
             Entity eNode = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(eNode, new RenderNode {});
-            if (primary)
-            {
-                EntityManager.AddComponentData(eNode, new RenderNodePrimarySurface {});
-            }
-            else
-            {
+            EntityManager.AddComponentData(eNode, new RenderNode { });
+            if (primary) {
+                EntityManager.AddComponentData(eNode, new RenderNodePrimarySurface { });
+            } else {
                 AddRenderToTextureForNode(eNode, w, h, true, true);
             }
 
@@ -356,8 +342,7 @@ namespace Unity.Tiny.Rendering
         public Entity FindPassOnNode(Entity node, RenderPassType pt)
         {
             var passes = EntityManager.GetBuffer<RenderPassRef>(node);
-            for (int i = 0; i < passes.Length; i++)
-            {
+            for (int i = 0; i < passes.Length; i++) {
                 var p = EntityManager.GetComponentData<RenderPass>(passes[i].e);
                 if (p.passType == pt)
                     return passes[i].e;
@@ -374,36 +359,71 @@ namespace Unity.Tiny.Rendering
             return e;
         }
 
-        protected Entity eMainViewNode;
-        protected Entity eFrontBufferNode;
-
-        protected Entity BuildDefaultRenderGraph(int w, int h, bool directToFrontBuffer)
+        public static void ComputeAutoScaleSize(int targetW, int targetH, int maxSize, out int bufferW, out int bufferH)
         {
-            if (!directToFrontBuffer)
-            {
+            Assert.IsTrue(maxSize > 0 && targetW > 0 && targetH > 0);
+            if (targetW <= maxSize && targetH <= maxSize) {
+                bufferW = targetW;
+                bufferH = targetH;
+            } else {
+                float scale;
+                if (targetW >= targetH)
+                    scale = (float)maxSize / (float)targetW;
+                else
+                    scale = (float)maxSize / (float)targetH;
+                bufferW = (int)(targetW * scale);
+                bufferH = (int)(targetH * scale);
+                Assert.IsTrue(bufferW <= maxSize && bufferH <= maxSize);
+            }
+        }
+
+        Entity BuildRenderGraph()
+        {
+            Assert.IsTrue(eMainViewNode == Entity.Null);
+            Assert.IsTrue((int)currentConfig.Mode != 0);
+            int w, h;
+            if (currentConfig.Mode != RenderGraphMode.DirectToFrontBuffer) {
                 eMainViewNode = CreateNodeEntity();
-                World.TinyEnvironment().SetEntityName(eMainViewNode, "Auto generated: Main view node");
                 EntityManager.AddComponent<MainViewNodeTag>(eMainViewNode);
                 // add a target texture for main view
+                if (currentConfig.Mode == RenderGraphMode.FixedRenderBuffer) {
+                    w = currentConfig.RenderBufferWidth;
+                    h = currentConfig.RenderBufferHeight;
+                } else {
+                    var di = GetSingleton<DisplayInfo>();
+                    ComputeAutoScaleSize(di.framebufferWidth, di.framebufferHeight, currentConfig.RenderBufferMaxSize, out w, out h);
+                    EntityManager.AddComponentData(eMainViewNode, new RenderNodeAutoScaleToDisplay {
+                        MaxSize = currentConfig.RenderBufferMaxSize
+                    });
+                }
                 AddRenderToTextureForNode(eMainViewNode, w, h, true, true);
                 // blit the main view node
-                eFrontBufferNode = CreateFrontBufferRenderNode(w, h);
-                World.TinyEnvironment().SetEntityName(eFrontBufferNode, "Auto generated: Front buffer node");
+                eFrontBufferNode = CreateFrontBufferRenderNode(0, 0); // size does not matter, as it needs to auto update size from display 
                 LinkNodes(eFrontBufferNode, eMainViewNode);
                 // build a blit renderer
                 AddBlitter(eMainViewNode, eFrontBufferNode);
-            }
-            else
-            {
+            } else {
                 // render direct to front buffer - this will break srgb rendering in browsers!
-                eMainViewNode = CreateFrontBufferRenderNode(w, h);
-                World.TinyEnvironment().SetEntityName(eMainViewNode, "Auto generated: Front buffer and main view node");
+                var di = GetSingleton<DisplayInfo>();
+                if ( di.colorSpace != ColorSpace.Gamma )
+                    Debug.LogAlways ("Warning, using direct to frame buffer rendering with linear color space. This will not look the same on all platforms.");
+                w = di.framebufferWidth;
+                h = di.framebufferHeight;
+                eMainViewNode = CreateFrontBufferRenderNode(w, h); // size does not matter, as it needs to auto update size from display 
                 EntityManager.AddComponent<MainViewNodeTag>(eMainViewNode);
-                Entities.WithoutBurst().WithStructuralChanges().WithNone<CameraAutoAspectFromDisplay>().WithAll<Camera>().ForEach((Entity e) => {
-                    EntityManager.AddComponent<CameraAutoAspectFromDisplay>(e);
-                }).Run();
                 eFrontBufferNode = eMainViewNode;
             }
+            // update cameras to auto update from node
+            // this is temporary! once there are multiple cameras at the same time, not all of them might want to have aspect set automatically
+            Entities.WithoutBurst().WithStructuralChanges().WithNone<CameraAutoAspectFromNode>().WithAll<Camera>().ForEach((Entity e) => {
+                EntityManager.AddComponent<CameraAutoAspectFromNode>(e);
+            }).Run();
+            Entities.WithoutBurst().WithAll<CameraAutoAspectFromNode>().ForEach((Entity e, ref Camera cam) => {
+                EntityManager.SetComponentData(e, new CameraAutoAspectFromNode {
+                    Node = eMainViewNode
+                });
+                cam.aspect = (float)w / (float)h;
+            }).Run();
 
             // gather & sort camera
             NativeList<SortedCamera> cameras = new NativeList<SortedCamera>(Allocator.TempJob);
@@ -427,23 +447,17 @@ namespace Unity.Tiny.Rendering
         protected Entity CreateScreenToWorldChain(RenderPassType rpt, ScreenToWorldId id)
         {
             Entity eBase = EntityManager.CreateEntity();
-            if (eMainViewNode != eFrontBufferNode)
-            {
-                EntityManager.AddComponentData<ScreenToWorldRoot>(eBase, new ScreenToWorldRoot
-                {
+            if (eMainViewNode != eFrontBufferNode) {
+                EntityManager.AddComponentData<ScreenToWorldRoot>(eBase, new ScreenToWorldRoot {
                     pass = FindPassOnNode(eFrontBufferNode, RenderPassType.FullscreenQuad),
                     id = id
                 });
                 var buf = EntityManager.AddBuffer<ScreenToWorldPassList>(eBase);
-                buf.Add(new ScreenToWorldPassList
-                {
+                buf.Add(new ScreenToWorldPassList {
                     pass = FindPassOnNode(eMainViewNode, rpt),
                 });
-            }
-            else
-            {
-                EntityManager.AddComponentData<ScreenToWorldRoot>(eBase, new ScreenToWorldRoot
-                {
+            } else {
+                EntityManager.AddComponentData<ScreenToWorldRoot>(eBase, new ScreenToWorldRoot {
                     pass = FindPassOnNode(eFrontBufferNode, rpt),
                     id = id
                 });
@@ -454,8 +468,7 @@ namespace Unity.Tiny.Rendering
         public Entity FindNodeWithComponent<T>()
         {
             EntityQuery q = GetEntityQuery(ComponentType.ReadOnly<T>(), ComponentType.ReadOnly<RenderNode>());
-            using (var r = q.ToEntityArray(Allocator.TempJob))
-            {
+            using (var r = q.ToEntityArray(Allocator.TempJob)) {
                 Assert.IsTrue(r.Length == 1);
                 return r[0];
             }
@@ -473,8 +486,7 @@ namespace Unity.Tiny.Rendering
         {
             // blitter
             Entity erendBlit = EntityManager.CreateEntity();
-            EntityManager.AddComponentData(erendBlit, new BlitRenderer
-            {
+            EntityManager.AddComponentData(erendBlit, new BlitRenderer {
                 texture = FindNodeColorOutput(eSourceNode),
                 color = new float4(1)
             });
@@ -484,7 +496,7 @@ namespace Unity.Tiny.Rendering
             var bToPasses = EntityManager.AddBuffer<RenderToPassesEntry>(eToBlitPasses);
             bToPasses.Add(new RenderToPassesEntry { e = ePass });
             EntityManager.AddSharedComponentData(erendBlit, new RenderToPasses { e = eToBlitPasses });
-            EntityManager.AddComponentData(ePass, new RenderPassUpdateFromBlitterAutoAspect {blitRenderer = erendBlit });
+            EntityManager.AddComponentData(ePass, new RenderPassUpdateFromBlitterAutoAspect { blitRenderer = erendBlit });
         }
 
         private void AddShadowMapPass(Entity eNode, Entity ePass, Entity eLight, int cascade, int res)
@@ -492,12 +504,10 @@ namespace Unity.Tiny.Rendering
             int dx = 0;
             int dy = 0;
             uint cc = 0x0000ffff; // blue
-            if (cascade >= 0)
-            {
+            if (cascade >= 0) {
                 Assert.IsTrue(EntityManager.HasComponent<CascadeShadowmappedLight>(eLight));
                 res >>= 1;
-                switch (cascade)
-                {
+                switch (cascade) {
                     // index must match cascade select in shader
                     case 0: cc = 0xff0000ff; break; // red
                     case 1: cc = 0xff7f00ff; dy = res; break; // orange
@@ -505,8 +515,7 @@ namespace Unity.Tiny.Rendering
                     case 3: cc = 0x00ff00ff; dx = res; dy = res; break; // green
                 }
             }
-            EntityManager.AddComponentData(ePass, new RenderPass
-            {
+            EntityManager.AddComponentData(ePass, new RenderPass {
                 inNode = eNode,
                 sorting = RenderPassSort.Unsorted,
                 projectionTransform = float4x4.identity,
@@ -524,57 +533,44 @@ namespace Unity.Tiny.Rendering
                 clearDepth = 1,
                 clearStencil = 0
             });
-            if (cascade >= 0)
-            {
-                EntityManager.AddComponentData(ePass, new RenderPassCascade
-                {
+            if (cascade >= 0) {
+                EntityManager.AddComponentData(ePass, new RenderPassCascade {
                     cascade = cascade
                 });
-                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCascade
-                {
+                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromCascade {
                     light = eLight,
                     cascade = cascade
                 });
-            }
-            else
-            {
-                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromLight
-                {
+            } else {
+                EntityManager.AddComponentData(ePass, new RenderPassUpdateFromLight {
                     light = eLight
                 });
             }
             EntityManager.GetBuffer<RenderPassRef>(eNode).Add(new RenderPassRef { e = ePass });
         }
 
-        protected void BuildAllLightNodes(Entity eNodeOutput)
+        void BuildAllLightNodes(Entity eNodeOutput)
         {
             Assert.IsTrue(EntityManager.HasComponent<RenderNode>(eNodeOutput));
             // go through all lights and create nodes
-            Entities.WithoutBurst().WithStructuralChanges().ForEach((Entity eLight, ref Light l, ref ShadowmappedLight sl) =>
-            {
-                if (sl.shadowMapRenderNode == Entity.Null)
-                {
+            Entities.WithoutBurst().WithStructuralChanges().ForEach((Entity eLight, ref Light l, ref ShadowmappedLight sl) => {
+                if (sl.shadowMapRenderNode == Entity.Null) {
                     // need a node
                     Entity eNode = CreateNodeEntity();
                     sl.shadowMapRenderNode = eNode;
                     EntityManager.AddComponent<RenderNode>(eNode);
 
-                    if (EntityManager.HasComponent<CascadeShadowmappedLight>(eLight))
-                    {
+                    if (EntityManager.HasComponent<CascadeShadowmappedLight>(eLight)) {
                         // need four passes in node
-                        for (int i = 0; i < 4; i++)
-                        {
+                        for (int i = 0; i < 4; i++) {
                             Entity ePass = EntityManager.CreateEntity();
                             AddShadowMapPass(eNode, ePass, eLight, i, sl.shadowMapResolution);
                         }
-                    }
-                    else
-                    {
+                    } else {
                         Entity ePass = eNode; //why not stick everything on the same entity
                         AddShadowMapPass(eNode, ePass, eLight, -1, sl.shadowMapResolution);
                     }
-                    EntityManager.AddComponentData(eNode, new RenderNodeShadowMap
-                    {
+                    EntityManager.AddComponentData(eNode, new RenderNodeShadowMap {
                         lightsource = eLight
                     });
                     LinkNodes(eNodeOutput, eNode);
@@ -583,8 +579,7 @@ namespace Unity.Tiny.Rendering
                 }
 
                 // allocate the texture if needed
-                if (sl.shadowMap == Entity.Null)
-                {
+                if (sl.shadowMap == Entity.Null) {
                     AddRenderToShadowMapForNode(sl.shadowMapRenderNode, sl.shadowMapResolution);
                     var rtt = EntityManager.GetComponentData<RenderNodeTexture>(sl.shadowMapRenderNode);
                     sl.shadowMap = rtt.depthTexture;
@@ -593,74 +588,93 @@ namespace Unity.Tiny.Rendering
             }).Run();
         }
 
-        protected Entity FindMainViewNode()
+        void DestroyRenderGraph()
         {
-            var q = GetEntityQuery(ComponentType.ReadOnly<MainViewNodeTag>());
-            var a = q.ToEntityArray(Allocator.TempJob);
-            Entity r = Entity.Null;
-            if (a.Length > 0)
-                r = a[0];
-            a.Dispose();
-            return r;
+            EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
+            // get rid of all the textures
+            Entities.ForEach((ref RenderNodeTexture rnt) => {
+                if (rnt.colorTexture != Entity.Null)
+                    ecb.DestroyEntity(rnt.colorTexture);
+                if (rnt.depthTexture != Entity.Null)
+                    ecb.DestroyEntity(rnt.depthTexture);
+            }).Run();
+            // remove shadow map references 
+            Entities.ForEach((ref ShadowmappedLight sml) => {
+                sml.shadowMap = Entity.Null;
+                sml.shadowMapRenderNode = Entity.Null;
+            }).Run();
+            // get rid of all the passes
+            Entities.WithAll<RenderPass>().ForEach((Entity e) => {
+                ecb.DestroyEntity(e);
+            }).Run();
+            // get rid of all the nodes
+            Entities.WithAll<RenderNode>().ForEach((Entity e) => {
+                ecb.DestroyEntity(e);
+            }).Run();
+            // remove picking 
+            Entities.WithAll<ScreenToWorldRoot>().ForEach((Entity e) => {
+                ecb.DestroyEntity(e);
+            }).Run();
+            // remove all render group assignments 
+            Entities.WithAll<RenderToPasses>().ForEach((Entity e) => {
+                ecb.RemoveComponent<RenderToPasses>(e);
+            }).Run();
+            // remove all groups
+            Entities.WithAll<RenderGroup>().ForEach((Entity e) => {
+                ecb.DestroyEntity(e);
+            }).Run();
+            ecb.Playback(EntityManager);
+            ecb.Dispose();
+            // need to tell the assignrendergroups system, as it caches entities outside ecs 
+            World.GetExistingSystem<AssignRenderGroups>().InvalidateAllGroups();
+
+            eFrontBufferNode = Entity.Null;
+            eMainViewNode = Entity.Null;
         }
 
-        protected int GetNumEntities()
+        // Helper for other systems to force a full rebuild of the render graph
+        // for whatever reason. This can be used after scene load/unload to reset the graph for now.
+        // This function will go away eventually. 
+        public void ForceRebuildRenderGraph ()
         {
-            var cs = EntityManager.GetAllChunks(Allocator.TempJob);
-            int r = 0;
-            foreach (var c in cs) r += c.Count;
-            cs.Dispose();
-            return r;
+            DestroyRenderGraph();
+            eMainViewNode = BuildRenderGraph();
+            CreateScreenToWorldChain(RenderPassType.Opaque, ScreenToWorldId.MainCamera);
+            CreateScreenToWorldChain(RenderPassType.Sprites, ScreenToWorldId.Sprites);
+            CreateScreenToWorldChain(RenderPassType.UI, ScreenToWorldId.UILayer);
         }
 
-        internal void DoGraphBuild(bool directToFB)
+        protected override void OnUpdate()
         {
-            Entity eMainView = FindMainViewNode();
-            if (eMainView == Entity.Null)
-            {
+            Dependency.Complete();
+#if RENDERING_FORCE_DIRECT
+            Assert.IsTrue(false, "Obsolete script define RENDERING_FORCE_DIRECT enabled. Use the RenderGraphConfig singleton to configure a render graph");
+#endif
+            if (!HasSingleton<RenderGraphConfig>()) {
+                Entity eConfig = GetSingletonEntity<DisplayInfo>();
+                EntityManager.AddComponentData<RenderGraphConfig>(eConfig, RenderGraphConfig.Default );
+            }
+
+            RenderGraphConfig config = GetSingleton<RenderGraphConfig>();
+            if (!config.Equals(currentConfig) || eMainViewNode == Entity.Null) {
+                RenderDebug.LogAlways("RenderGraphConfig changed, building a new render graph!");
+                DestroyRenderGraph();
+                // we should run the bgfx system here once, so textures are cleaned up and ready for re-use
+                currentConfig = config;
                 // we only build a default graph if there are no existing nodes - otherwise assume they are already built
-                RenderDebug.Log("Auto building default render graph");
-
-                eMainView = BuildDefaultRenderGraph(1920, 1080, directToFB);
-
+                eMainViewNode = BuildRenderGraph();
                 CreateScreenToWorldChain(RenderPassType.Opaque, ScreenToWorldId.MainCamera);
                 CreateScreenToWorldChain(RenderPassType.Sprites, ScreenToWorldId.Sprites);
                 CreateScreenToWorldChain(RenderPassType.UI, ScreenToWorldId.UILayer);
             }
 
-            // build light nodes for lights that have no node associated
-            BuildAllLightNodes(eMainView);
+            // build light nodes for lights that have no node associated - need to do this always
+            BuildAllLightNodes(eMainViewNode);
         }
 
-        protected override void OnUpdate()
-        {
-            if (!SceneService.AreStartupScenesLoaded(World))
-                return;
-            Dependency.Complete();
-#if DEBUG
-            var countEntsStart = GetNumEntities();
-#endif
-            bool directToFB;
-#if RENDERING_FORCE_DIRECT
-            var di = GetSingleton<DisplayInfo>();
-            if (di.colorSpace == ColorSpace.Linear)
-                RenderDebug.Log("Rendering directly to back buffer, this will break sRGB rendering on web platforms");
-            directToFB = true;
-#else
-            RenderDebug.Log("Using intermediate render buffer");
-            directToFB = false;
-#endif
-
-            DoGraphBuild(directToFB);
-
-#if DEBUG
-            var countEntsEnd = GetNumEntities();
-            if (countEntsEnd != countEntsStart)
-                RenderDebug.LogFormatAlways("Render graph builder added entities (was {0}, now {1})", countEntsStart, countEntsEnd);
-#endif
-            //Disable Render graph builder system. We need to create it only once
-            Enabled = false;
-        }
+        Entity eMainViewNode;
+        Entity eFrontBufferNode;
+        RenderGraphConfig currentConfig;
     }
 
     public struct BuildGroup : IComponentData, IEquatable<BuildGroup>
@@ -690,26 +704,28 @@ namespace Unity.Tiny.Rendering
     {
         NativeHashMap<BuildGroup, Entity> m_buildGroups;
 
+        public void InvalidateAllGroups()
+        {
+            m_buildGroups.Clear();
+        }
+
         internal Entity FindOrCreateRenderGroup(BuildGroup key)
         {
             Entity e = Entity.Null;
-            if (m_buildGroups.TryGetValue(key, out e))
-            {
+            if (m_buildGroups.TryGetValue(key, out e)) {
                 return e;
             }
 
             // gather all passes
             // This whole thing is temporary; this perf is not great but only happens at startup
             var q = GetEntityQuery(ComponentType.ReadOnly<RenderPass>());
-            using (var allPasses = q.ToEntityArray(Allocator.TempJob))
-            {
+            using (var allPasses = q.ToEntityArray(Allocator.TempJob)) {
                 e = EntityManager.CreateEntity();
                 EntityManager.AddComponent<RenderGroup>(e);
                 EntityManager.AddComponentData<BuildGroup>(e, key);
                 var groupTargetPasses = EntityManager.AddBuffer<RenderToPassesEntry>(e);
                 m_buildGroups.TryAdd(key, e);
-                for (int i = 0; i < allPasses.Length; i++)
-                {
+                for (int i = 0; i < allPasses.Length; i++) {
                     var ePass = allPasses[i];
                     var pass = EntityManager.GetComponentData<RenderPass>(ePass);
                     if (((uint)pass.passType & (uint)key.passTypes) == 0)
@@ -721,7 +737,7 @@ namespace Unity.Tiny.Rendering
             return e;
         }
 
-        internal void AddItemToRenderGroup(Entity item, BuildGroup key)
+        public void AddItemToRenderGroup(Entity item, BuildGroup key)
         {
             var group = FindOrCreateRenderGroup(key);
             OptionalSetSharedComponent(item, new RenderToPasses { e = group });
@@ -729,14 +745,11 @@ namespace Unity.Tiny.Rendering
 
         protected internal void OptionalSetSharedComponent<T>(Entity e, T value) where T : unmanaged, ISharedComponentData
         {
-            if (EntityManager.HasComponent<T>(e))
-            {
+            if (EntityManager.HasComponent<T>(e)) {
                 T oldValue = EntityManager.GetSharedComponentData<T>(e);
                 if (UnsafeUtility.MemCmp(&oldValue, &value, sizeof(T)) != 0)
                     EntityManager.SetSharedComponentData<T>(e, value);
-            }
-            else
-            {
+            } else {
                 EntityManager.AddSharedComponentData<T>(e, value);
             }
         }
@@ -769,110 +782,57 @@ namespace Unity.Tiny.Rendering
         protected override void OnCreate()
         {
             base.OnCreate();
-
             m_buildGroups = new NativeHashMap<BuildGroup, Entity>(16, Allocator.Persistent);
         }
 
         protected override void OnDestroy()
         {
             m_buildGroups.Dispose();
-
             base.OnDestroy();
         }
 
         protected override void OnUpdate()
         {
-            if (!SceneService.AreStartupScenesLoaded(World))
-                return;
-#if DEBUG
-            var countEntsStart = GetNumEntities();
-#endif
-            // go through lit renderers and assign lighting setup to them
-            // create light
-            // TEMP HACK
-            var q2 = GetEntityQuery(ComponentType.ReadOnly<LightingBGFX>());
-            Entity eLighting = Entity.Null;
-            if (q2.CalculateEntityCount() == 0)
-            {
-                eLighting = EntityManager.CreateEntity();
-                EntityManager.AddComponentData(eLighting, new LightingBGFX());
-                // add both ways lookup lighting setup <-> light
-                var b1 = EntityManager.AddBuffer<LightToLightingSetup>(eLighting);
-                Entities.WithoutBurst().WithStructuralChanges().WithAll<Light>().ForEach((Entity e) =>
-                {
-                    b1.Add(new LightToLightingSetup { e = e });
-                }).Run();
-                Entities.WithoutBurst().WithStructuralChanges().WithAll<Light>().ForEach((Entity e) =>
-                {
-                    var b = EntityManager.AddBuffer<LightToLightingSetup>(e);
-                    b.Add(new LightToLightingSetup { e = eLighting });
-                }).Run();
-            }
-            else
-            {
-                var a = q2.ToEntityArray(Allocator.TempJob);
-                Assert.IsTrue(a.Length == 1);
-                eLighting = a[0];
-                a.Dispose();
-            }
-            Entities.WithoutBurst().WithStructuralChanges().WithAll<LitMeshRenderer>().WithNone<LightingRef>().ForEach((Entity e) =>
-            {
-                OptionalSetSharedComponent(e, new LightingRef { e = eLighting });
-            }).Run();
-            // EOH
-
             // go through all known render types, and assign groups to them
             // assign groups to all renderers
-            Entities.WithAll<SimpleMeshRenderer>().WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().ForEach((Entity e, ref MeshRenderer rlmr) =>
-            {
+            Entities.WithAny<SimpleMeshRenderer, SimpleParticleRenderer>().WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().ForEach((Entity e, ref MeshRenderer rlmr) => {
                 bool isTransparent = false;
                 if (EntityManager.HasComponent<SimpleMaterial>(rlmr.material))
                     isTransparent = EntityManager.GetComponentData<SimpleMaterial>(rlmr.material).transparent;
-                else if (EntityManager.HasComponent<SimpleMaterialBGFX>(rlmr.material)) // why?
-                {
-                    var matBGFX = EntityManager.GetComponentData<SimpleMaterialBGFX>(rlmr.material);
-                    isTransparent = (matBGFX.state & (ulong)bgfx.StateFlags.WriteZ) != (ulong)bgfx.StateFlags.WriteZ;
-                }
                 FinalizePass(e, isTransparent);
             }).Run();
 
-            Entities.WithAll<LitMeshRenderer>().WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().ForEach((Entity e, ref MeshRenderer rlmr) => {
-                bool isTransparent = false;
-                if (EntityManager.HasComponent<LitMaterial>(rlmr.material))
-                    isTransparent = EntityManager.GetComponentData<LitMaterial>(rlmr.material).transparent;
-                else if (EntityManager.HasComponent<LitMaterialBGFX>(rlmr.material)) // why?
+            Entities.WithAny<LitMeshRenderer, LitParticleRenderer>().WithoutBurst().WithStructuralChanges()
+                .WithNone<RenderToPasses>().ForEach((Entity e, ref MeshRenderer rlmr) =>
                 {
-                    var matBGFX = EntityManager.GetComponentData<LitMaterialBGFX>(rlmr.material);
-                    isTransparent = (matBGFX.state & (ulong)bgfx.StateFlags.WriteZ) != (ulong)bgfx.StateFlags.WriteZ;
-                }
+                    bool isTransparent = false;
+                    if (EntityManager.HasComponent<LitMaterial>(rlmr.material))
+                        isTransparent = EntityManager.GetComponentData<LitMaterial>(rlmr.material).transparent;
+                    FinalizePass(e, isTransparent);
+                }).Run();
+
+            Entities.WithAny<LitMeshRenderer>().WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().ForEach((Entity e, ref SkinnedMeshRenderer rlsmr) => {
+                bool isTransparent = false;
+                if (EntityManager.HasComponent<LitMaterial>(rlsmr.material))
+                    isTransparent = EntityManager.GetComponentData<LitMaterial>(rlsmr.material).transparent;
                 FinalizePass(e, isTransparent);
             }).Run();
 
             // those are things that do not render anywhere naturally, so add a to passes for gizmos
             // TODO add a GizmoRenderer tag for these
-            Entities.WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().WithAny<GizmoLight, GizmoCamera, GizmoAutoMovingDirectionalLight>().ForEach((Entity e) =>
-            {
+            Entities.WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().WithAny<GizmoLight, GizmoCamera, GizmoAutoMovingDirectionalLight>().ForEach((Entity e) => {
                 ShadowMask shadowMask = new ShadowMask { mask = ulong.MaxValue };
                 CameraMask cameraMask = new CameraMask { mask = 0 };
                 Entity eGroup = FindOrCreateRenderGroup(new BuildGroup { passTypes = RenderPassType.Transparent, cameraMask = cameraMask, shadowMask = shadowMask });
                 OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
             }).Run();
 
-            Entities.WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().WithAny<GizmoDebugOverlayTexture>().ForEach((Entity e) =>
-            {
+            Entities.WithoutBurst().WithStructuralChanges().WithNone<RenderToPasses>().WithAny<GizmoDebugOverlayTexture>().ForEach((Entity e) => {
                 ShadowMask shadowMask = new ShadowMask { mask = ulong.MaxValue };
                 CameraMask cameraMask = new CameraMask { mask = 0 };
                 Entity eGroup = FindOrCreateRenderGroup(new BuildGroup { passTypes = RenderPassType.DebugOverlay, cameraMask = cameraMask, shadowMask = shadowMask });
                 OptionalSetSharedComponent(e, new RenderToPasses { e = eGroup });
             }).Run();
-
-
-            // TODO: remove any passes that are not referenced by anything
-#if DEBUG
-            var countEntsEnd = GetNumEntities();
-            if (countEntsEnd != countEntsStart)
-                RenderDebug.LogFormatAlways("Render graph builder added entities (was {0}, now {1})", countEntsStart, countEntsEnd);
-#endif
         }
     }
 }

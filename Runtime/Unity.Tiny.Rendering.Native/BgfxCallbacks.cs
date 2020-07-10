@@ -36,6 +36,9 @@ namespace Bgfx
         public unsafe delegate void ProfilerBeginCallback(byte* name, int bytes);
         public delegate void ProfilerEndCallback();
 
+        [DllImport("lib_unity_tiny_rendering_native.dll", EntryPoint = "BGFXAllocator_Init", CallingConvention = CallingConvention.StdCall)]
+        public static extern unsafe IntPtr AllocatorInit();
+
         [DllImport("lib_unity_tiny_rendering_native.dll", EntryPoint = "BGFXCB_Init", CallingConvention = CallingConvention.StdCall)]
         public static extern unsafe IntPtr CallbacksInit(IntPtr funcBegin, IntPtr funcEnd);
 

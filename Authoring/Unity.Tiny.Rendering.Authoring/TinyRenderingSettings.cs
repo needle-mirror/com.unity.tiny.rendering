@@ -1,5 +1,6 @@
 using Unity.Build;
 using Unity.Properties;
+using UnityEngine;
 
 namespace Unity.Tiny.Rendering.Settings
 {
@@ -7,15 +8,24 @@ namespace Unity.Tiny.Rendering.Settings
     public class TinyRenderingSettings : IBuildComponent
     {
         [CreateProperty]
-        public int ResolutionX = 1280; //TODO: switch to VectorInt when there will be a Vector2Int Built-in inspector
+        public Vector2Int WindowSize = new Vector2Int(1920, 1080);
 
         [CreateProperty]
-        public int ResolutionY = 720;
+        public Vector2Int RenderResolution = new Vector2Int(1920, 1080);
+
+        [CreateProperty]
+        public RenderGraphMode RenderGraphMode = RenderGraphMode.FixedRenderBuffer;
+
+        [CreateProperty]
+        public int MaxResolution = 2048;
 
         [CreateProperty]
         public bool AutoResizeFrame = true;
 
         [CreateProperty]
         public bool DisableVsync = false;
+
+        [CreateProperty]
+        public bool GPUSkinning = false;
     }
 }

@@ -1,7 +1,9 @@
 using Bgfx;
+using Unity.Build.DotsRuntime;
 using Unity.Entities;
 using Unity.Entities.Runtime.Build;
 using Unity.Tiny.Rendering;
+using Unity.Tiny.Rendering.Settings;
 
 namespace Unity.TinyConversion
 {
@@ -12,23 +14,29 @@ namespace Unity.TinyConversion
 
         protected override void OnUpdate()
         {
-            if (buildConfiguration == null)
+            if (BuildConfiguration == null)
                 return;
-            if (!buildConfiguration.TryGetComponent<DotsRuntimeBuildProfile>(out var profile))
+            if (!BuildConfiguration.TryGetComponent<DotsRuntimeBuildProfile>(out var profile))
                 return;
-            if (!buildConfiguration.TryGetComponent<DotsRuntimeRootAssembly>(out var rootAssembly))
-                return;
-            if (!rootAssembly.TypeCache.HasType<PrecompiledShaderData>())
+            if (!AssemblyCache.HasType<PrecompiledShaderData>())
                 return;
 
-            bgfx.RendererType[] types = GetShaderFormat(profile.Target);
+            bool includeAllPlatform = false;
+            if (BuildConfiguration.TryGetComponent<TinyShaderSettings>(out var shaderSettings))
+            {
+                includeAllPlatform = shaderSettings.PackageShadersForAllPlatforms;
+            }
+
+            bgfx.RendererType[] types = GetShaderFormat(profile.Target, includeAllPlatform);
 
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.simple, "simple", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.simplelit, "simplelit", types);
+            CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.simplelitgpuskinning, "simplelitgpuskinning", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.line, "line", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.zOnly, "zOnly", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.blitsrgb, "blitsrgb", types);
             CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.shadowmap, "shadowmap", types);
+            CreateShaderDataEntity(kBinaryShaderFolderPath, ShaderType.shadowmapgpuskinning, "shadowmapgpuskinning", types);
         }
     }
 }

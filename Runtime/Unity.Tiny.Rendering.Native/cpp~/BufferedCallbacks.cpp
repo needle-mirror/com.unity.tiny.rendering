@@ -2,12 +2,15 @@
 We need to register a whole bunch of callbacks with BGFX, but they will be called from the BGFX rendering thread.
 That's why we can not call directly into c# with delegates, as now we have managed c# code running on a non-main thread, which is not supported by il2cpp.
 
+The one exception is profiler callbacks which were carefully designed to run burst compatible c# code which is subsequently compatible with il2cpp as well.
+
 So, we need to make these c++ callbacks and gather events in buffers that we can then grab and read from via the main thread.
 
 Don't care about multiple instances, it's all a single one and static anyway
 */
 
 #include <baselibext.h>
+#include <allocators.h>
 #include <vector>
 #include <memory>
 #include <string.h>
@@ -145,6 +148,20 @@ typedef struct {
 #pragma pack(pop)
 
 /**/
+typedef struct bgfx_allocator_interface_s
+{
+    const struct bgfx_allocator_vtbl_s* vtbl;
+
+} bgfx_allocator_interface_t;
+
+/**/
+typedef struct bgfx_allocator_vtbl_s
+{
+    void*(*realloc)(bgfx_allocator_interface_t* _this, void* _ptr, size_t _size, size_t _align, const char* _file, uint32_t _line);
+
+} bgfx_allocator_vtbl_t;
+
+/**/
 typedef struct bgfx_interface_vtbl bgfx_interface_vtbl_t;
 
 /**/
@@ -198,6 +215,9 @@ struct BGFXCallbackEntry {
     int additionalAllocatedDataStart;
     int additionalAllocatedDataLen;
 };
+
+static bgfx_allocator_interface_s allocator_interface;
+static bgfx_allocator_vtbl_s allocator_vtbl;
 
 typedef void(* ProfilerBeginCallback)(const char* name, int bytes);
 typedef void(* ProfilerEndCallback)();
@@ -299,26 +319,21 @@ static void trace_vargs(bgfx_callback_interface_t* _this, const char* _filePath,
 }
 
 static void profiler_begin(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    if (g_profilerBegin != NULL) {
-        _filePath = stripPath(_filePath);
-        char buf[4096] = { 0 };
-        int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-        g_profilerBegin(buf, bytes);
-    }
+    _filePath = stripPath(_filePath);
+    char buf[4096] = { 0 };
+    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+    g_profilerBegin(buf, bytes);
 }
 
 static void profiler_begin_literal(bgfx_callback_interface_t* _this, const char* _name, uint32_t _abgr, const char* _filePath, uint16_t _line) {
-    if (g_profilerBegin != NULL) {
-        _filePath = stripPath(_filePath);
-        char buf[4096] = { 0 };
-        int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
-        g_profilerBegin(buf, bytes);
-    }
+    _filePath = stripPath(_filePath);
+    char buf[4096] = { 0 };
+    int bytes = snprintf(buf, sizeof(buf), "%s (at %s:%i)", _name, _filePath, (int)_line);
+    g_profilerBegin(buf, bytes);
 }
 
 static void profiler_end(bgfx_callback_interface_t* _this) {
-    if (g_profilerEnd != NULL)
-        g_profilerEnd();
+    g_profilerEnd();
 }
 
 static uint32_t cache_read_size(bgfx_callback_interface_t* _this, uint64_t _id) {
@@ -377,7 +392,17 @@ static void capture_frame(bgfx_callback_interface_t* _this, const void* _data, u
     BGFX_CALLBACK_DO_ABORT
 }
 
+static void* wrapped_realloc(bgfx_allocator_interface_t* _this, void* _ptr, size_t _size, size_t _align, const char* _file, uint32_t _line) {
+    return unsafeutility_realloc(_ptr, (int64_t)_size, (int)_align, Unity::LowLevel::Allocator::Persistent);
+}
+
 // called from c#, main thread
+DOTS_EXPORT(void*) BGFXAllocator_Init() {
+    allocator_vtbl.realloc = &wrapped_realloc;
+    allocator_interface.vtbl = &allocator_vtbl;
+    return &allocator_interface;
+}
+
 DOTS_EXPORT(void*) BGFXCB_Init(ProfilerBeginCallback funcBegin, ProfilerEndCallback funcEnd) {
 	BaselibLock lock(mutex);
     cb_vtbl.fatal = &fatal;
